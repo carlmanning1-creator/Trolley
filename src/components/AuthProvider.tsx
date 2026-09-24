@@ -4,6 +4,7 @@ import type { Session } from "@supabase/supabase-js";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
 import { SignIn } from "@/components/SignIn";
+import { forgetLocal } from "@/lib/db";
 
 export type Profile = {
   id: string;
@@ -71,8 +72,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // storage full or blocked: the app still works, it just refetches next time
         }
         setStatus("ready");
-      } else if (!cached && !error) {
+      } else if (!error) {
+        // Signed in but no longer in a household (removed in Settings, People): stop using
+        // the cached profile and clear what this device held for them.
+        try {
+          localStorage.removeItem(PROFILE_CACHE_KEY);
+        } catch {
+          // ignore
+        }
+        setProfile(null);
         setStatus("no-profile");
+        // Give the app a moment to unmount and stop syncing before its store is deleted.
+        if (cached) setTimeout(() => void forgetLocal(s.user.id).catch(() => undefined), 500);
       } else if (!cached) {
         // Network error and nothing cached yet: keep the loader up and try again shortly.
         setStatus("loading");
@@ -126,7 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   if (status === "no-profile" || !profile) {
     return (
       <div className="mx-auto flex min-h-dvh max-w-sm flex-col items-center justify-center gap-4 p-6 text-center">
-        <p>This account isn&apos;t part of a household yet. Ask Carl to add you.</p>
+        <p>This account isn&apos;t part of a household. Ask your household admin to add you.</p>
         <button
           type="button"
           onClick={signOut}

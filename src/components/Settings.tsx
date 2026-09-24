@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { PeopleManager } from "@/components/PeopleManager";
 import { Sheet } from "@/components/Sheet";
+import { PERSON_COLOURS } from "@/lib/people";
 import { useAisles, useLists } from "@/lib/hooks";
 import {
   addList,
@@ -15,7 +17,6 @@ import {
 } from "@/lib/mutations";
 import type { AisleRow, ListRow, ProfileRow } from "@/lib/types";
 
-const COLOURS = ["#2563eb", "#db2777", "#7c3aed", "#16a34a", "#ea580c", "#0891b2", "#ca8a04", "#dc2626"];
 const LIST_ICONS = ["🛒", "🔨", "💊", "🛍️", "🎁", "🏕️", "🐶", "🍷", "🧒", "📝"];
 
 const field = "min-h-11 min-w-0 flex-1 rounded-xl border border-border bg-background px-3 text-base";
@@ -59,6 +60,12 @@ export function Settings({
         )}
 
         {notifications && <Section title="Notifications">{notifications}</Section>}
+
+        {profile?.is_admin && (
+          <Section title="People">
+            <PeopleManager meId={profile.id} />
+          </Section>
+        )}
 
         <Section title="Lists">
           <ul className="flex flex-col gap-2">
@@ -110,7 +117,7 @@ function ProfileEditor({ profile }: { profile: ProfileRow }) {
       <fieldset>
         <legend className="mb-2 text-sm text-muted">Your colour</legend>
         <div className="flex flex-wrap gap-2">
-          {COLOURS.map((c) => (
+          {PERSON_COLOURS.map((c) => (
             <button
               key={c}
               type="button"

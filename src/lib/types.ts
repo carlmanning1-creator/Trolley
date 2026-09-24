@@ -13,6 +13,7 @@ export type ProfileRow = Stamps & {
   household_id: string;
   display_name: string;
   colour: string;
+  is_admin?: boolean;
 };
 
 export type ListRow = Stamps & {

@@ -7,7 +7,7 @@ The full build brief and every decision behind it is in `CLAUDE.md`.
 ## What's in it
 
 - Shared lists with live sync, sorted by supermarket aisle, that keep working with no signal
-- Sign-in with a 6-digit email code (invite only)
+- Sign-in with a 6-digit email code (invite only). The household admin adds and removes people in Settings, People.
 - Staples, recently bought, and automatic aisle sorting (keyword list, Open Food Facts, then Claude)
 - Product pictures found automatically: Open Food Facts, then Wikimedia Commons, then a Claude web search (capped at 300 a month), or your own photos. Renaming an item looks again.
 - A link on any item, and export of a list as shared text, a spreadsheet or a printout

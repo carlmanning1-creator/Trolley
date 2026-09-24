@@ -258,7 +258,7 @@ Design the data model so these slot in later without migrations that break exist
 
 ## Current status notes (kept up to date by Claude Code)
 
-- All three people (Carl, Bec, Grace) have accounts in the household. Bec and Grace were added back on Carl's say-so (Sept 2026). There is no in-app user management; `npm run seed:users` adds anyone missing from its list, and removals go through the Supabase admin API.
+- All three people (Carl, Bec, Grace) have accounts in the household; Bec and Grace were added back on Carl's say-so (Sept 2026). Carl is the household admin (`profiles.is_admin`, only settable with the secret key) and adds or removes people in Settings, People (`/api/people`). Adding creates the account without sending an email. Removing deletes the account; their items stay, and their phone drops its local copy and shows the "not part of a household" screen.
 - Supabase project ref: `bfcmyfpubbxqlidyuxqd` (Sydney). Vercel project: `trolley` (team "Carl's projects"), production URL https://trolley-iota.vercel.app.
 - Browser tests (`npm run test:e2e`) use throwaway households and never send real emails.
 - The Anthropic key reaches this container as `TROLLEY_ANTHROPIC_KEY` (the harness reserves `ANTHROPIC_API_KEY`); the app itself reads `ANTHROPIC_API_KEY` from `.env.local` and Vercel.

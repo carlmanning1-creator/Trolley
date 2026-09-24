@@ -195,6 +195,17 @@ describe("row level security", () => {
     expect(p.data?.household_id).toBe(outsiderHousehold);
   });
 
+  it("nobody can make themselves a household admin", async () => {
+    const res = await outsider.from("profiles").update({ is_admin: true }).eq("id", outsiderId).select();
+    expect(res.error?.code).toBe("42501");
+    const p = await admin.from("profiles").select("is_admin").eq("id", outsiderId).single();
+    expect(p.data?.is_admin).toBe(false);
+    // Ordinary profile edits still work.
+    const ok = await outsider.from("profiles").update({ display_name: "Outsider" }).eq("id", outsiderId).select();
+    expect(ok.error).toBeNull();
+    expect(ok.data).toHaveLength(1);
+  });
+
   it("an outsider cannot see or download Manning photos", async () => {
     const listed = await outsider.storage.from("product-images").list(MANNING);
     expect(listed.data ?? []).toEqual([]);

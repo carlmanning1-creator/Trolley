@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // Creates the household's sign-in accounts and profiles. Safe to run again: existing people are kept.
+// Day to day, the household admin (Carl) adds and removes people in Settings, People.
 // Needs NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (reads .env.local).
 import { config } from "dotenv";
 import { createClient } from "@supabase/supabase-js";
@@ -8,7 +9,7 @@ config({ path: ".env.local", quiet: true });
 
 const HOUSEHOLD_ID = "6b0f5a52-8f7e-4c1e-9a53-3f7c2d1b9e01";
 const PEOPLE = [
-  { email: "carlmanning1@gmail.com", display_name: "Carl", colour: "#2563eb" },
+  { email: "carlmanning1@gmail.com", display_name: "Carl", colour: "#2563eb", is_admin: true },
   { email: "rebecca.manning1983@gmail.com", display_name: "Bec", colour: "#db2777" },
   { email: "gracegarretty@hotmail.com", display_name: "Grace", colour: "#7c3aed" },
 ];
@@ -51,6 +52,7 @@ for (const person of PEOPLE) {
       household_id: HOUSEHOLD_ID,
       display_name: person.display_name,
       colour: person.colour,
+      is_admin: person.is_admin ?? false,
     },
     { onConflict: "id", ignoreDuplicates: true },
   );

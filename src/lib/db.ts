@@ -85,3 +85,13 @@ export async function getMeta(key: string): Promise<string | undefined> {
 export async function setMeta(key: string, value: string): Promise<void> {
   await db().meta.put({ key, value });
 }
+
+// For someone who has been removed from the household: drop everything this device holds
+// for them, so the household's lists don't linger on a phone that can no longer sync.
+export async function forgetLocal(userId: string): Promise<void> {
+  if (current?.userId === userId) {
+    current.db.close();
+    current = null;
+  }
+  await Dexie.delete(`trolley-${userId}`);
+}
