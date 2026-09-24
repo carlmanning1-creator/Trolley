@@ -6,6 +6,9 @@
 // Needs: SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_REF
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { config } from "dotenv";
+
+config({ path: ".env.local", quiet: true });
 
 const token = process.env.SUPABASE_ACCESS_TOKEN;
 const ref = process.env.SUPABASE_PROJECT_REF;

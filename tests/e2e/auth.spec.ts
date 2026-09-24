@@ -12,9 +12,9 @@ test.afterAll(async () => {
 
 test("signs in with a 6-digit code and stays signed in after reload", async ({ page }) => {
   await signInThroughUi(page, person);
-  await expect(page.getByText("Tester", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Add an item")).toBeVisible();
   await page.reload();
-  await expect(page.getByText("Tester", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Add an item")).toBeVisible();
   await expect(page.getByLabel("Email")).toHaveCount(0);
 });
 
