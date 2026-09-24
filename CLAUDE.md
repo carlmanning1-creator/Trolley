@@ -265,6 +265,8 @@ Design the data model so these slot in later without migrations that break exist
 - Receipt reading passes its accuracy test on `claude-haiku-4-5-20251001`, so `ANTHROPIC_RECEIPT_MODEL` stays on Haiku.
 - Pictures (Carl's request, Sept 2026): sources in order are Open Food Facts (barcode, then strict name + aisle match), Wikimedia Commons (free), then Claude web search via the Anthropic key, capped at 150 lookups per household per month (`usage_counters`). Coles and Woolworths are deliberately excluded (their terms forbid scraping). A name that finds nothing isn't retried for 30 days. Renaming an item links it to the product with the new name and looks for that picture; photos people took are never replaced automatically.
 - Items have an optional `link`; lists export as shared text, CSV or print (Lists sheet).
+- Similar items on one list get a ⚠ flag with Merge or Keep both; Keep both is remembered in `list_items.distinct_from`. Picture search uses the item's note as well as its name, and a note change re-searches automatic pictures.
+- Sync sends rows parent tables first (the order of `SYNCED_TABLES`), so an item never reaches the server before its list, aisle or product.
 - In this cloud container, browser WebSockets are blocked and Open Food Facts images are slow; live push is proven by `tests/integration/realtime.test.ts` and picture tests are best judged against the live site.
 
 ---
