@@ -1,4 +1,5 @@
 import "server-only";
+import https from "node:https";
 import { aisleForOffCategories } from "@/lib/offCategories";
 import { nameFit } from "@/lib/offMatch";
 import { serverEnv } from "@/lib/server/env";
@@ -142,21 +143,84 @@ export function isOffImageUrl(url: string): boolean {
   }
 }
 
+// Downloads with Node's own HTTPS client: it tries IPv4 and IPv6 side by side (so one slow
+// route can't stall the connection) and only follows redirects that stay on OFF's hosts.
+function httpsGetImage(url: string, timeoutMs: number, redirectsLeft = 2): Promise<{ bytes: Buffer; type: string }> {
+  return new Promise((resolve, reject) => {
+    const req = https.get(
+      url,
+      // autoSelectFamily is passed through to the socket (Node's "happy eyeballs"); older
+      // type definitions don't list it on request options.
+      {
+        headers: { "User-Agent": serverEnv.offUserAgent(), Accept: "image/*" },
+        autoSelectFamily: true,
+        autoSelectFamilyAttemptTimeout: 300,
+        timeout: timeoutMs,
+      } as https.RequestOptions,
+      (res) => {
+        const status = res.statusCode ?? 0;
+        if (status >= 300 && status < 400 && res.headers.location) {
+          res.resume();
+          const next = new URL(res.headers.location, url).toString();
+          if (redirectsLeft <= 0 || !isOffImageUrl(next)) {
+            reject(new Error("Image was redirected away from Open Food Facts"));
+            return;
+          }
+          httpsGetImage(next, timeoutMs, redirectsLeft - 1).then(resolve, reject);
+          return;
+        }
+        if (status !== 200) {
+          res.resume();
+          reject(new Error(`Image download failed (${status})`));
+          return;
+        }
+        const type = (res.headers["content-type"] ?? "image/jpeg").split(";")[0];
+        if (!["image/jpeg", "image/png", "image/webp"].includes(type)) {
+          res.resume();
+          reject(new Error("Unexpected image type"));
+          return;
+        }
+        const chunks: Buffer[] = [];
+        let size = 0;
+        res.on("data", (c: Buffer) => {
+          size += c.length;
+          if (size > 5 * 1024 * 1024) {
+            req.destroy(new Error("Image too large"));
+            return;
+          }
+          chunks.push(c);
+        });
+        res.on("end", () => resolve({ bytes: Buffer.concat(chunks), type }));
+        res.on("error", reject);
+      },
+    );
+    req.on("timeout", () => req.destroy(new Error("Image download timed out")));
+    req.on("error", reject);
+  });
+}
+
 export async function downloadOffImage(url: string): Promise<{ bytes: ArrayBuffer; type: string }> {
   if (!isOffImageUrl(url)) throw new Error("Not an Open Food Facts image");
-  // OFF's image server is sometimes slow to even accept a connection; try twice.
-  let res: Response;
+  // Machines that reach the internet through an HTTP proxy (like our build and test containers)
+  // need fetch, which honours the proxy; everywhere else (Vercel) use the dual-stack client.
+  const viaProxy = Boolean(process.env.HTTPS_PROXY || process.env.https_proxy);
+  const attempt = async (timeoutMs: number) => {
+    if (!viaProxy) return httpsGetImage(url, timeoutMs);
+    const res = await offFetch(url, timeoutMs);
+    if (!isOffImageUrl(res.url)) throw new Error("Image was redirected away from Open Food Facts");
+    if (!res.ok) throw new Error(`Image download failed (${res.status})`);
+    const type = res.headers.get("content-type")?.split(";")[0] ?? "image/jpeg";
+    if (!["image/jpeg", "image/png", "image/webp"].includes(type)) throw new Error("Unexpected image type");
+    const bytes = Buffer.from(await res.arrayBuffer());
+    if (bytes.byteLength > 5 * 1024 * 1024) throw new Error("Image too large");
+    return { bytes, type };
+  };
+  let got: { bytes: Buffer; type: string };
   try {
-    res = await offFetch(url, 20_000);
+    got = await attempt(15_000);
   } catch {
-    res = await offFetch(url, 25_000);
+    got = await attempt(20_000); // OFF's image server is sometimes slow; one retry
   }
-  // A redirect must not take us anywhere but OFF's own image host.
-  if (!isOffImageUrl(res.url)) throw new Error("Image was redirected away from Open Food Facts");
-  if (!res.ok) throw new Error(`Image download failed (${res.status})`);
-  const type = res.headers.get("content-type")?.split(";")[0] ?? "image/jpeg";
-  if (!["image/jpeg", "image/png", "image/webp"].includes(type)) throw new Error("Unexpected image type");
-  const bytes = await res.arrayBuffer();
-  if (bytes.byteLength > 5 * 1024 * 1024) throw new Error("Image too large");
-  return { bytes, type };
+  const bytes = got.bytes.buffer.slice(got.bytes.byteOffset, got.bytes.byteOffset + got.bytes.byteLength) as ArrayBuffer;
+  return { bytes, type: got.type };
 }
