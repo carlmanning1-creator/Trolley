@@ -258,12 +258,12 @@ Design the data model so these slot in later without migrations that break exist
 
 ## Current status notes (kept up to date by Claude Code)
 
-- **Bec and Grace are held back.** At Carl's request (preliminary testing), only Carl's account exists. Their accounts were removed so no sign-in code can be sent to them. Do not run `npm run seed:users` until Carl says to add them; that command recreates both accounts and profiles.
+- All three people (Carl, Bec, Grace) have accounts in the household. Bec and Grace were added back on Carl's say-so (Sept 2026). There is no in-app user management; `npm run seed:users` adds anyone missing from its list, and removals go through the Supabase admin API.
 - Supabase project ref: `bfcmyfpubbxqlidyuxqd` (Sydney). Vercel project: `trolley` (team "Carl's projects"), production URL https://trolley-iota.vercel.app.
 - Browser tests (`npm run test:e2e`) use throwaway households and never send real emails.
 - The Anthropic key reaches this container as `TROLLEY_ANTHROPIC_KEY` (the harness reserves `ANTHROPIC_API_KEY`); the app itself reads `ANTHROPIC_API_KEY` from `.env.local` and Vercel.
 - Receipt reading passes its accuracy test on `claude-haiku-4-5-20251001`, so `ANTHROPIC_RECEIPT_MODEL` stays on Haiku.
-- Pictures (Carl's request, Sept 2026): sources in order are Open Food Facts (barcode, then strict name + aisle match), Wikimedia Commons (free), then Claude web search via the Anthropic key, capped at 150 lookups per household per month (`usage_counters`). Coles and Woolworths are deliberately excluded (their terms forbid scraping). A name that finds nothing isn't retried for 30 days. Renaming an item links it to the product with the new name and looks for that picture; photos people took are never replaced automatically.
+- Pictures (Carl's request, Sept 2026): sources in order are Open Food Facts (barcode, then strict name + aisle match), Wikimedia Commons (free), then Claude web search via the Anthropic key, capped at 300 lookups per household per month (`usage_counters`). Coles and Woolworths are deliberately excluded (their terms forbid scraping). A name that finds nothing isn't retried for 30 days. Renaming an item links it to the product with the new name and looks for that picture; photos people took are never replaced automatically.
 - Items have an optional `link`; lists export as shared text, CSV or print (Lists sheet).
 - Similar items on one list get a ⚠ flag with Merge or Keep both; Keep both is remembered in `list_items.distinct_from`. Picture search uses the item's note as well as its name, and a note change re-searches automatic pictures.
 - Sync sends rows parent tables first (the order of `SYNCED_TABLES`), so an item never reaches the server before its list, aisle or product.

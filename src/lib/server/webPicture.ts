@@ -10,7 +10,7 @@ import { safeFetch } from "@/lib/server/safeFetch";
 // the picture that page advertises for sharing (its og:image). Capped each month, because
 // each search costs about a cent.
 
-export const MONTHLY_WEB_LOOKUPS = 150;
+export const MONTHLY_WEB_LOOKUPS = 300;
 
 export async function underMonthlyCap(householdId: string): Promise<boolean> {
   const month = new Date().toISOString().slice(0, 7);
