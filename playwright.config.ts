@@ -29,7 +29,8 @@ export default defineConfig({
   retries: 0,
   reporter: [["list"]],
   use: {
-    baseURL: `http://localhost:${PORT}`,
+    // Set E2E_BASE_URL to test a deployed site instead of a local server.
+    baseURL: process.env.E2E_BASE_URL ?? `http://localhost:${PORT}`,
     trace: "retain-on-failure",
     launchOptions: { executablePath: CHROMIUM, args: proxyCaArgs },
     // Route the test browser through the container's outbound proxy when there is one.
@@ -37,12 +38,14 @@ export default defineConfig({
       ? { server: process.env.HTTPS_PROXY, bypass: "localhost,127.0.0.1" }
       : undefined,
   },
-  webServer: {
-    command: `npx next start -p ${PORT}`,
-    url: `http://localhost:${PORT}`,
-    reuseExistingServer: true,
-    timeout: 60_000,
-  },
+  webServer: process.env.E2E_BASE_URL
+    ? undefined
+    : {
+        command: `npx next start -p ${PORT}`,
+        url: `http://localhost:${PORT}`,
+        reuseExistingServer: true,
+        timeout: 60_000,
+      },
   projects: [
     // Carl and Bec: Android Chrome
     { name: "android", use: { ...devices["Pixel 7"] } },
