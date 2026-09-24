@@ -4,6 +4,8 @@ import { downloadOffImage } from "@/lib/server/off";
 
 // Copies an Open Food Facts picture into our own storage, so it keeps working offline
 // and if OFF ever moves it. Returns the storage path to put on the product.
+export const maxDuration = 60;
+
 const Body = z.object({ productId: z.string().uuid(), url: z.string().url() });
 
 export async function POST(req: Request) {

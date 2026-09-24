@@ -117,5 +117,6 @@ test("typed items get a picture from Open Food Facts when one exists", async ({ 
   await signInThroughUi(page, person);
   await page.getByLabel("Add an item").fill("Weet-Bix");
   await page.getByLabel("Add an item").press("Enter");
-  await expect(item(page, "Weet-Bix").locator("img")).toBeVisible({ timeout: 25_000 });
+  // Allow for Open Food Facts being slow: the background retry fills it in if the first try fails.
+  await expect(item(page, "Weet-Bix").locator("img")).toBeVisible({ timeout: 75_000 });
 });

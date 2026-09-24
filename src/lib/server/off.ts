@@ -144,8 +144,13 @@ export function isOffImageUrl(url: string): boolean {
 
 export async function downloadOffImage(url: string): Promise<{ bytes: ArrayBuffer; type: string }> {
   if (!isOffImageUrl(url)) throw new Error("Not an Open Food Facts image");
-  // OFF's image server can be slow; give it longer than the data API.
-  const res = await offFetch(url, 20_000);
+  // OFF's image server is sometimes slow to even accept a connection; try twice.
+  let res: Response;
+  try {
+    res = await offFetch(url, 20_000);
+  } catch {
+    res = await offFetch(url, 25_000);
+  }
   // A redirect must not take us anywhere but OFF's own image host.
   if (!isOffImageUrl(res.url)) throw new Error("Image was redirected away from Open Food Facts");
   if (!res.ok) throw new Error(`Image download failed (${res.status})`);
