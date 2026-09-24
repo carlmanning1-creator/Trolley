@@ -5,6 +5,7 @@ import { callApi } from "@/lib/api";
 import { db } from "@/lib/db";
 import { resizeImage } from "@/lib/imageResize";
 import { nowIso, updateProduct } from "@/lib/mutations";
+import { patchLocal } from "@/lib/sync";
 import { supabase } from "@/lib/supabase";
 import type { ProductRow } from "@/lib/types";
 
@@ -139,8 +140,11 @@ export async function offLookupBarcode(barcode: string): Promise<OffProduct | nu
   return product;
 }
 
-export async function offSearch(q: string): Promise<OffProduct[]> {
-  const { results } = await callApi<{ results: OffProduct[] }>(`/api/off/search?q=${encodeURIComponent(q)}`);
+export async function offSearch(q: string, strict = false, aisle: string | null = null): Promise<OffProduct[]> {
+  const params = new URLSearchParams({ q });
+  if (strict) params.set("strict", "1");
+  if (aisle) params.set("aisle", aisle);
+  const { results } = await callApi<{ results: OffProduct[] }>(`/api/off/search?${params}`);
   return results;
 }
 
@@ -151,13 +155,21 @@ export async function applyOffPicture(product: ProductRow, off: OffProduct): Pro
     method: "POST",
     json: { productId: product.id, url: off.imageUrl },
   });
-  const fresh = (await db().products.get(product.id)) ?? product;
   // Someone may have taken their own photo in the meantime; theirs wins.
-  if (fresh.image_path && fresh.image_source !== "off") return;
-  await updateProduct(fresh, { image_path: path, image_source: "off", off_code: off.code });
+  await patchLocal<ProductRow>("products", product.id, (cur) =>
+    cur.image_path && cur.image_source !== "off"
+      ? null
+      : { image_path: path, image_source: "off", off_code: off.code, updated_at: nowIso() },
+  );
 }
 
 const lookedUp = new Set<string>();
+
+// The product's aisle name, from the newest copy (auto-sort may have just set it).
+async function aisleName(product: ProductRow): Promise<string | undefined> {
+  const fresh = (await db().products.get(product.id)) ?? product;
+  return fresh.aisle_id ? (await db().aisles.get(fresh.aisle_id))?.name : undefined;
+}
 
 // Step after adding: find a picture for a product that has none.
 // Barcode lookup when we have a barcode, otherwise a name search limited to results with pictures.
@@ -165,12 +177,32 @@ export async function findPicture(product: ProductRow): Promise<void> {
   if (product.image_path || !navigator.onLine || lookedUp.has(product.id)) return;
   lookedUp.add(product.id);
   try {
-    const off = product.barcode
-      ? await offLookupBarcode(product.barcode)
-      : (await offSearch(product.name))[0] ?? null;
+    const code = product.barcode ?? product.off_code;
+    const off = code
+      ? await offLookupBarcode(code)
+      : (await offSearch(product.name, true, (await aisleName(product)) ?? null))[0] ?? null;
     if (off?.imageUrl) await applyOffPicture(product, off);
   } catch {
     // No picture this time; the placeholder stays and someone can add a photo.
     lookedUp.delete(product.id);
+  }
+}
+
+// Retries pictures for anything on a list that still has none (a lookup that failed on bad
+// signal, or a scan whose picture download timed out). Each product is tried once per sweep.
+let sweeping = false;
+export async function sweepPictures(): Promise<void> {
+  if (sweeping || !navigator.onLine) return;
+  sweeping = true;
+  try {
+    const open = await db().list_items.filter((i) => !i.deleted_at && !i.checked && !!i.product_id).toArray();
+    const ids = [...new Set(open.map((i) => i.product_id!))].slice(0, 20);
+    for (const id of ids) {
+      const product = await db().products.get(id);
+      if (!product || product.deleted_at || product.image_path) continue;
+      await findPicture(product);
+    }
+  } finally {
+    sweeping = false;
   }
 }

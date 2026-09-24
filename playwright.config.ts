@@ -55,7 +55,8 @@ export default defineConfig({
     : {
         command: `npx next start -p ${PORT}`,
         url: `http://localhost:${PORT}`,
-        reuseExistingServer: true,
+        // Always start fresh, so tests never run against an old build left running.
+        reuseExistingServer: false,
         timeout: 60_000,
       },
   projects: [

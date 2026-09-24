@@ -7,6 +7,8 @@ const RULES: [RegExp, string][] = [
   [/baby|infant/, "Baby"],
   [/pet-food|dog-food|cat-food/, "Pet"],
   [/breakfast-cereals|cereals-and-potatoes:breakfast|muesli|porridge|oat-flakes|granola/, "Breakfast"],
+  // Before dairy: "peanut-butters" and "chocolate-spreads" aren't dairy.
+  [/nut-butters|peanut-butters|nut-spreads|chocolate-spreads|hazelnut-spreads|yeast-extract|honeys|jams/, "Pantry"],
   [/cheeses|milks|dairies|yogurts|yoghurts|butters|creams|eggs/, "Dairy & Eggs"],
   [/fresh-meats|meats|poultry|sausages|seafood|fishes|fish-and|beef|pork|lamb|chicken/, "Meat & Seafood"],
   [/deli|hams|salami|cured-meats|olives|hummus|dips/, "Deli"],

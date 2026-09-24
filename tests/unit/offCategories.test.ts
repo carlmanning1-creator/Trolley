@@ -13,6 +13,8 @@ describe("aisleForOffCategories", () => {
     [["en:cereals-and-potatoes", "en:breads", "en:sliced-breads"], "Bakery"],
     [["en:baby-foods", "en:baby-milks"], "Baby"],
     [["en:pet-food", "en:dog-food"], "Pet"],
+    [["en:spreads", "en:plant-based-spreads", "en:nut-butters", "en:peanut-butters"], "Pantry"],
+    [["en:dairies", "en:fats", "en:animal-fats", "en:milkfat", "en:butters"], "Dairy & Eggs"],
   ])("%j -> %s", (tags, aisle) => {
     expect(aisleForOffCategories(tags)).toBe(aisle);
   });

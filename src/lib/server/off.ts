@@ -1,5 +1,6 @@
 import "server-only";
 import { aisleForOffCategories } from "@/lib/offCategories";
+import { nameFit } from "@/lib/offMatch";
 import { serverEnv } from "@/lib/server/env";
 
 // Open Food Facts client. Every call sends our User-Agent, answers are cached in memory,
@@ -39,10 +40,10 @@ function spend(kind: keyof typeof budgets) {
   b.used.push(now);
 }
 
-async function offFetch(url: string): Promise<Response> {
+async function offFetch(url: string, timeoutMs = 8000): Promise<Response> {
   return fetch(url, {
     headers: { "User-Agent": serverEnv.offUserAgent(), Accept: "application/json" },
-    signal: AbortSignal.timeout(8000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
 }
 
@@ -93,25 +94,42 @@ export async function lookupBarcode(barcode: string): Promise<OffProduct | null>
   return product;
 }
 
-// Name search, only returning products that have a picture. Australian products first.
-export async function searchByName(query: string, limit = 6): Promise<OffProduct[]> {
+// Name search, only returning products that have a picture.
+// strict (used for automatic pictures) keeps only good fits, best first; otherwise
+// Australian products first, for people choosing a picture themselves.
+export async function searchByName(
+  query: string,
+  limit = 6,
+  strict = false,
+  expectedAisle: string | null = null,
+): Promise<OffProduct[]> {
   const q = query.trim().toLowerCase();
   const key = `s:${q}`;
-  const hit = cached<OffProduct[]>(key);
-  if (hit) return hit.slice(0, limit);
-  spend("search");
-  const url = `https://search.openfoodfacts.org/search?q=${encodeURIComponent(q)}&page_size=40&fields=${FIELDS},countries_tags`;
-  const res = await offFetch(url);
-  if (!res.ok) throw new Error(`Open Food Facts search answered ${res.status}`);
-  const body = (await res.json()) as { hits?: (RawProduct & { countries_tags?: string[] })[] };
-  const hits = body.hits ?? [];
-  const results = hits
-    .map((h) => ({ product: tidy(h), au: h.countries_tags?.includes("en:australia") ?? false }))
-    .filter((r): r is { product: OffProduct; au: boolean } => Boolean(r.product?.imageUrl))
-    .sort((a, b) => Number(b.au) - Number(a.au))
-    .map((r) => r.product);
-  remember(key, results);
-  return results.slice(0, limit);
+  let all = cached<{ product: OffProduct; au: boolean }[]>(key);
+  if (!all) {
+    spend("search");
+    const url = `https://search.openfoodfacts.org/search?q=${encodeURIComponent(q)}&page_size=40&fields=${FIELDS},countries_tags`;
+    const res = await offFetch(url);
+    if (!res.ok) throw new Error(`Open Food Facts search answered ${res.status}`);
+    const body = (await res.json()) as { hits?: (RawProduct & { countries_tags?: string[] })[] };
+    all = (body.hits ?? [])
+      .map((h) => ({ product: tidy(h), au: h.countries_tags?.includes("en:australia") ?? false }))
+      .filter((r): r is { product: OffProduct; au: boolean } => Boolean(r.product?.imageUrl));
+    remember(key, all);
+  }
+  if (strict) {
+    return all
+      .map((r) => ({ r, fit: nameFit(q, r.product.name, r.product.brand, r.au) }))
+      .filter((x): x is { r: { product: OffProduct; au: boolean }; fit: number } => x.fit !== null)
+      // If we know which aisle the item is in, the picture's product must belong there too
+      // (so "Milk" can't pick Cadbury Dairy Milk, and "Butter" can't pick peanut butter).
+      .filter((x) => !expectedAisle || !x.r.product.aisle || x.r.product.aisle === expectedAisle)
+      .filter((x) => !expectedAisle || x.r.product.aisle !== null || x.fit >= 45)
+      .sort((a, b) => b.fit - a.fit)
+      .slice(0, limit)
+      .map((x) => x.r.product);
+  }
+  return [...all].sort((a, b) => Number(b.au) - Number(a.au)).slice(0, limit).map((r) => r.product);
 }
 
 // Only ever download pictures from OFF's own image host.
@@ -126,7 +144,10 @@ export function isOffImageUrl(url: string): boolean {
 
 export async function downloadOffImage(url: string): Promise<{ bytes: ArrayBuffer; type: string }> {
   if (!isOffImageUrl(url)) throw new Error("Not an Open Food Facts image");
-  const res = await offFetch(url);
+  // OFF's image server can be slow; give it longer than the data API.
+  const res = await offFetch(url, 20_000);
+  // A redirect must not take us anywhere but OFF's own image host.
+  if (!isOffImageUrl(res.url)) throw new Error("Image was redirected away from Open Food Facts");
   if (!res.ok) throw new Error(`Image download failed (${res.status})`);
   const type = res.headers.get("content-type")?.split(";")[0] ?? "image/jpeg";
   if (!["image/jpeg", "image/png", "image/webp"].includes(type)) throw new Error("Unexpected image type");

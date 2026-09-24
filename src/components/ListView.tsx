@@ -90,7 +90,7 @@ export function ListView({
         {groups.map((g) => (
           <section key={g.key} aria-label={g.title || list.name} className="mb-5 break-inside-avoid">
             {g.title && (
-              <h3 className={`mb-2 flex items-center gap-2 font-semibold text-muted ${large ? "text-xl" : "text-sm uppercase tracking-wide"}`}>
+              <h3 className={`mb-2 flex items-center gap-2 font-semibold text-muted ${large ? "text-2xl" : "text-sm uppercase tracking-wide"}`}>
                 <span aria-hidden>{g.icon}</span>
                 {g.title}
               </h3>

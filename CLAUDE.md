@@ -261,6 +261,9 @@ Design the data model so these slot in later without migrations that break exist
 - **Bec and Grace are held back.** At Carl's request (preliminary testing), only Carl's account exists. Their accounts were removed so no sign-in code can be sent to them. Do not run `npm run seed:users` until Carl says to add them; that command recreates both accounts and profiles.
 - Supabase project ref: `bfcmyfpubbxqlidyuxqd` (Sydney). Vercel project: `trolley` (team "Carl's projects"), production URL https://trolley-iota.vercel.app.
 - Browser tests (`npm run test:e2e`) use throwaway households and never send real emails.
+- The Anthropic key reaches this container as `TROLLEY_ANTHROPIC_KEY` (the harness reserves `ANTHROPIC_API_KEY`); the app itself reads `ANTHROPIC_API_KEY` from `.env.local` and Vercel.
+- Receipt reading passes its accuracy test on `claude-haiku-4-5-20251001`, so `ANTHROPIC_RECEIPT_MODEL` stays on Haiku.
+- In this cloud container, browser WebSockets are blocked and Open Food Facts images are slow; live push is proven by `tests/integration/realtime.test.ts` and picture tests are best judged against the live site.
 
 ---
 

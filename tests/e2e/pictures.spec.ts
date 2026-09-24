@@ -52,7 +52,7 @@ test("scanning a real barcode with the camera adds it with its picture and aisle
   const row = page.locator('[data-testid="list-item"]').filter({ hasText: /Vegemite/i });
   await expect(row).toBeVisible();
   await expect(page.getByRole("region", { name: "Pantry" })).toContainText(/Vegemite/i);
-  await expect(row.locator("img").first()).toBeVisible({ timeout: 20_000 });
+  await expect(row.locator("img").first()).toBeVisible({ timeout: 45_000 });
 
   await expect.poll(async () => (await admin.from("products").select("image_source, image_path, barcode").eq("household_id", house.id).ilike("name", "%vegemite%").single()).data, { timeout: 20_000 }).toMatchObject({ image_source: "off", barcode: "9300650658615" });
   const { data: files } = await admin.storage.from("product-images").list(house.id);
@@ -66,6 +66,7 @@ test("scanning it again comes straight from the catalogue", async ({ page }) => 
   await expect(page.getByLabel("Name")).toHaveCount(0); // catalogue card, not the Open Food Facts form
   await page.getByRole("button", { name: "Add to list" }).click();
   await expect(page.getByText(/is already on the list/)).toBeVisible();
+  await expect(page.getByTestId("sync-status")).toHaveText("Synced", { timeout: 20_000 });
 });
 
 test("an unknown barcode gets named once and is known next time", async ({ page }) => {
@@ -86,6 +87,8 @@ test("an unknown barcode gets named once and is known next time", async ({ page 
   await page.getByRole("button", { name: "Add to list" }).click();
   await expect(item(page, "Mystery sauce")).toHaveAttribute("data-checked", "false");
   await expect.poll(async () => (await product("Mystery sauce"))?.barcode, { timeout: 15_000 }).toBe(UNKNOWN);
+  // Let this phone finish syncing before the test closes it.
+  await expect(page.getByTestId("sync-status")).toHaveText("Synced", { timeout: 20_000 });
 });
 
 test("anyone can replace a picture with their own", async ({ page }) => {

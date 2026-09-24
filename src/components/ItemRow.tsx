@@ -135,7 +135,7 @@ export function ItemRow({
           <ProductThumb product={product} aisle={aisle} size={large ? 64 : 48} />
           <span className="min-w-0 flex-1">
             <span
-              className={`block truncate font-medium ${large ? "text-2xl" : "text-lg"} ${
+              className={`block truncate font-medium ${large ? "text-3xl" : "text-lg"} ${
                 item.checked ? "text-muted line-through" : ""
               }`}
             >

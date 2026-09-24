@@ -4,7 +4,7 @@
 import { db } from "@/lib/db";
 import { aisleForName } from "@/lib/keywords";
 import { parseItem } from "@/lib/parse";
-import { saveLocal } from "@/lib/sync";
+import { patchLocal, saveLocal } from "@/lib/sync";
 import type { AisleRow, ListItemRow, ListRow, ProductRow, ProfileRow } from "@/lib/types";
 
 export const nowIso = () => new Date().toISOString();
@@ -72,9 +72,8 @@ export async function createProduct(
 }
 
 export async function updateProduct(product: ProductRow, patch: Partial<ProductRow>): Promise<ProductRow> {
-  const next: ProductRow = { ...product, ...patch, updated_at: nowIso() };
-  await saveLocal("products", next);
-  return next;
+  const next = await patchLocal<ProductRow>("products", product.id, { ...patch, updated_at: nowIso() });
+  return next ?? { ...product, ...patch };
 }
 
 // ---------------------------------------------------------------------------
@@ -109,19 +108,17 @@ export async function addItem(
     return { item: existing, product, status: "already" };
   }
   if (existing && existing.checked) {
-    const restored: ListItemRow = {
-      ...existing,
+    const restored = await patchLocal<ListItemRow>("list_items", existing.id, (cur) => ({
       checked: false,
       checked_by: null,
       checked_at: null,
       check_changed_at: t,
-      quantity: quantity ?? existing.quantity,
-      unit: unit ?? existing.unit,
+      quantity: quantity ?? cur.quantity,
+      unit: unit ?? cur.unit,
       added_by: actor.userId,
       updated_at: t,
-    };
-    await saveLocal("list_items", restored);
-    return { item: restored, product, status: "restored" };
+    }));
+    return { item: restored ?? existing, product, status: "restored" };
   }
 
   const item: ListItemRow = {
@@ -151,8 +148,7 @@ export async function addItem(
 // or note. The server keeps whichever tick or untick happened last.
 export async function setChecked(actor: Actor, item: ListItemRow, checked: boolean): Promise<void> {
   const t = nowIso();
-  await saveLocal("list_items", {
-    ...item,
+  await patchLocal<ListItemRow>("list_items", item.id, {
     checked,
     checked_by: checked ? actor.userId : null,
     checked_at: checked ? t : null,
@@ -164,7 +160,7 @@ export async function updateItem(
   item: ListItemRow,
   patch: Partial<Pick<ListItemRow, "name" | "quantity" | "unit" | "note" | "aisle_id">>,
 ): Promise<void> {
-  await saveLocal("list_items", { ...item, ...patch, updated_at: nowIso() });
+  await patchLocal<ListItemRow>("list_items", item.id, { ...patch, updated_at: nowIso() });
   // Moving an item to another aisle teaches the catalogue, so it lands there next time.
   if (patch.aisle_id !== undefined && item.product_id) {
     const product = await db().products.get(item.product_id);
@@ -176,12 +172,9 @@ export async function updateItem(
         .equals(product.id)
         .filter((i) => !i.deleted_at && i.id !== item.id && i.aisle_id !== patch.aisle_id)
         .toArray();
-      if (siblings.length) {
-        const t = nowIso();
-        await saveLocal(
-          "list_items",
-          siblings.map((s) => ({ ...s, aisle_id: patch.aisle_id ?? null, updated_at: t })),
-        );
+      const t = nowIso();
+      for (const s of siblings) {
+        await patchLocal<ListItemRow>("list_items", s.id, { aisle_id: patch.aisle_id ?? null, updated_at: t });
       }
     }
   }
@@ -189,7 +182,7 @@ export async function updateItem(
 
 export async function deleteItem(item: ListItemRow): Promise<void> {
   const t = nowIso();
-  await saveLocal("list_items", { ...item, deleted_at: t, updated_at: t });
+  await patchLocal<ListItemRow>("list_items", item.id, { deleted_at: t, updated_at: t });
 }
 
 export async function clearTicked(listId: string): Promise<number> {
@@ -199,10 +192,12 @@ export async function clearTicked(listId: string): Promise<number> {
     .equals(listId)
     .filter((i) => !i.deleted_at && i.checked)
     .toArray();
-  await saveLocal(
-    "list_items",
-    ticked.map((i) => ({ ...i, deleted_at: t, updated_at: t })),
-  );
+  for (const i of ticked) {
+    // Re-check at write time: someone may have unticked it a moment ago.
+    await patchLocal<ListItemRow>("list_items", i.id, (cur) =>
+      cur.checked && !cur.deleted_at ? { deleted_at: t, updated_at: t } : null,
+    );
+  }
   return ticked.length;
 }
 
@@ -229,12 +224,12 @@ export async function addList(actor: Actor, name: string, icon = "📝"): Promis
 }
 
 export async function updateList(list: ListRow, patch: Partial<Pick<ListRow, "name" | "icon" | "use_aisles">>) {
-  await saveLocal("lists", { ...list, ...patch, updated_at: nowIso() });
+  await patchLocal<ListRow>("lists", list.id, { ...patch, updated_at: nowIso() });
 }
 
 export async function deleteList(list: ListRow) {
   const t = nowIso();
-  await saveLocal("lists", { ...list, deleted_at: t, updated_at: t });
+  await patchLocal<ListRow>("lists", list.id, { deleted_at: t, updated_at: t });
 }
 
 // Moves a list or aisle one place up (-1) or down (+1) by swapping sort order with its neighbour.
@@ -247,10 +242,9 @@ async function move<T extends ListRow | AisleRow>(table: "lists" | "aisles", row
   // Renumber everything so equal sort orders can't get stuck.
   const reordered = [...sorted];
   [reordered[i], reordered[j]] = [reordered[j], reordered[i]];
-  const changed = reordered
-    .map((r, idx) => ({ ...r, sort_order: idx + 1, updated_at: t }))
-    .filter((r, idx) => r.sort_order !== sorted.find((s) => s.id === reordered[idx].id)?.sort_order);
-  await saveLocal(table, changed);
+  for (const [idx, r] of reordered.entries()) {
+    if (r.sort_order !== idx + 1) await patchLocal<T>(table, r.id, { sort_order: idx + 1, updated_at: t } as Partial<T>);
+  }
 }
 
 export async function moveList(id: string, dir: -1 | 1) {
@@ -263,7 +257,7 @@ export async function moveList(id: string, dir: -1 | 1) {
 // ---------------------------------------------------------------------------
 
 export async function renameAisle(aisle: AisleRow, name: string) {
-  await saveLocal("aisles", { ...aisle, name: name.trim(), updated_at: nowIso() });
+  await patchLocal<AisleRow>("aisles", aisle.id, { name: name.trim(), updated_at: nowIso() });
 }
 
 export async function moveAisle(id: string, dir: -1 | 1) {
@@ -276,5 +270,5 @@ export async function moveAisle(id: string, dir: -1 | 1) {
 // ---------------------------------------------------------------------------
 
 export async function updateProfile(profile: ProfileRow, patch: Partial<Pick<ProfileRow, "display_name" | "colour">>) {
-  await saveLocal("profiles", { ...profile, ...patch, updated_at: nowIso() });
+  await patchLocal<ProfileRow>("profiles", profile.id, { ...patch, updated_at: nowIso() });
 }

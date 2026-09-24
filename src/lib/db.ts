@@ -27,6 +27,9 @@ export type ImageEntry = { path: string; blob: Blob; saved_at: string };
 // A picture taken on this device that still has to be uploaded (kept until there's signal).
 export type UploadEntry = { path: string; bucket: string; content_type: string; queued_at: string };
 
+// A receipt photo taken with no signal, kept until it can be uploaded and read.
+export type PendingReceipt = { id: string; list_id: string; blob: Blob; queued_at: string; error?: string };
+
 export class TrolleyDB extends Dexie {
   profiles!: EntityTable<ProfileRow, "id">;
   lists!: EntityTable<ListRow, "id">;
@@ -38,6 +41,7 @@ export class TrolleyDB extends Dexie {
   meta!: EntityTable<MetaEntry, "key">;
   images!: EntityTable<ImageEntry, "path">;
   uploads!: EntityTable<UploadEntry, "path">;
+  pending_receipts!: EntityTable<PendingReceipt, "id">;
 
   constructor(name: string) {
     super(name);
@@ -53,6 +57,7 @@ export class TrolleyDB extends Dexie {
       images: "path",
     });
     this.version(2).stores({ uploads: "path" });
+    this.version(3).stores({ pending_receipts: "id" });
   }
 }
 

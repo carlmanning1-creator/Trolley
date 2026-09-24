@@ -7,15 +7,29 @@ import { ItemSheet } from "@/components/ItemSheet";
 import { ListView } from "@/components/ListView";
 import { Settings } from "@/components/Settings";
 import { Sheet } from "@/components/Sheet";
+import { NotificationSettings } from "@/components/NotificationSettings";
 import { PictureEditor } from "@/components/PictureEditor";
+import { ReceiptsSheet } from "@/components/ReceiptsSheet";
 import { ScanSheet } from "@/components/ScanSheet";
+import { ShoppingBar } from "@/components/ShoppingBar";
 import { StaplesSheet } from "@/components/StaplesSheet";
 import { StatusPill } from "@/components/StatusPill";
 import { APP_NAME } from "@/lib/config";
 import { openDb } from "@/lib/db";
-import { useAisles, useItems, useLists, useProducts, useProfiles, useSyncStatus } from "@/lib/hooks";
+import {
+  useActiveSessions,
+  useAisles,
+  useItems,
+  useLists,
+  usePendingCount,
+  useProducts,
+  useProfiles,
+  useSyncStatus,
+} from "@/lib/hooks";
+import { processPendingReceipts } from "@/lib/receipts";
+import { noticeItemAdded, sendPendingNotices } from "@/lib/shopping";
 import { autoSortProduct, sweepUnsorted } from "@/lib/autosort";
-import { findPicture, flushUploads } from "@/lib/images";
+import { findPicture, flushUploads, sweepPictures } from "@/lib/images";
 import { updateProduct, type Actor, type AddResult } from "@/lib/mutations";
 import { startSync, stopSync } from "@/lib/sync";
 import type { ListItemRow } from "@/lib/types";
@@ -45,7 +59,7 @@ export function App({ mode = "phone" }: { mode?: "phone" | "kiosk" }) {
   return <Main key={userId} mode={mode} />;
 }
 
-type Overlay = null | "settings" | "lists" | "staples" | "scan";
+type Overlay = null | "settings" | "lists" | "staples" | "scan" | "receipts";
 
 function Main({ mode }: { mode: "phone" | "kiosk" }) {
   const { session, profile: authProfile, signOut } = useAuth();
@@ -70,7 +84,28 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
     return lists.find((l) => l.id === chosenList) ?? lists[0];
   }, [lists, chosenList, kiosk]);
 
-  const items = useItems(activeList?.id ?? null) ?? [];
+  const loadedItems = useItems(activeList?.id ?? null);
+  const items = useMemo(() => loadedItems ?? [], [loadedItems]);
+  const sessions = useActiveSessions(activeList?.id ?? null);
+  const pending = usePendingCount();
+  const mySession = sessions.find((s) => s.started_by === actor.userId);
+  // While I'm shopping, things other people add after I started get highlighted.
+  const highlightIds = useMemo(
+    () =>
+      new Set(
+        mySession
+          ? items
+              .filter((i) => !i.checked && i.added_by !== actor.userId && i.created_at >= mySession.started_at)
+              .map((i) => i.id)
+          : [],
+      ),
+    [items, mySession, actor.userId],
+  );
+
+  // Notifications go once the thing they're about has reached the server.
+  useEffect(() => {
+    if (pending === 0) void sendPendingNotices();
+  }, [pending]);
   const openCount = items.filter((i) => !i.checked).length;
 
   const chooseList = useCallback((id: string) => {
@@ -93,20 +128,32 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
     if (!ready) return;
     void sweepUnsorted();
     void flushUploads();
+    void processPendingReceipts(actor);
+    // Give first-time lookups a head start before retrying anything still missing a picture.
+    const first = setTimeout(() => void sweepPictures(), 30_000);
     const onOnline = () => {
       void sweepUnsorted();
       void flushUploads();
+      void processPendingReceipts(actor);
+      void sweepPictures();
     };
     window.addEventListener("online", onOnline);
-    return () => window.removeEventListener("online", onOnline);
-  }, [ready]);
+    return () => {
+      clearTimeout(first);
+      window.removeEventListener("online", onOnline);
+    };
+  }, [ready, actor]);
 
   const closeOverlay = useCallback(() => setOverlay(null), []);
   const closeEditor = useCallback(() => setEditing(null), []);
 
   function onAdded(r: AddResult) {
     if (!r.product.aisle_id) void autoSortProduct(r.product);
-    if (!r.product.image_path) void findPicture(r.product);
+    // Scanned products already fetch their Open Food Facts picture in the scanner.
+    if (!r.product.image_path && !r.product.off_code) void findPicture(r.product);
+    if (r.status !== "already" && sessions.some((s) => s.started_by !== actor.userId)) {
+      void noticeItemAdded(r.item.id);
+    }
     if (r.status === "already") setToast(`${r.item.name} is already on the list`);
     else if (r.status === "restored") setToast(`${r.item.name} is back on the list`);
   }
@@ -129,6 +176,7 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
     { key: "lists", label: "Lists", icon: "📋", onClick: () => setOverlay("lists") },
     { key: "scan", label: "Scan", icon: "📷", onClick: () => setOverlay("scan") },
     { key: "staples", label: "Staples", icon: "⭐", onClick: () => setOverlay("staples") },
+    { key: "receipts", label: "Receipts", icon: "🧾", onClick: () => setOverlay("receipts") },
     { key: "settings", label: "Settings", icon: "⚙️", onClick: () => setOverlay("settings") },
   ];
 
@@ -161,7 +209,32 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
             ))}
           </nav>
         )}
-        <AddBar actor={actor} listId={activeList.id} onAdded={onAdded} large={kiosk} />
+        {kiosk ? (
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <AddBar actor={actor} listId={activeList.id} onAdded={onAdded} large />
+            </div>
+            <button
+              type="button"
+              onClick={() => setOverlay("scan")}
+              className="flex min-h-16 shrink-0 items-center gap-2 rounded-2xl border-2 border-brand px-6 text-2xl font-semibold text-brand-strong"
+            >
+              <span aria-hidden>📷</span> Scan
+            </button>
+          </div>
+        ) : (
+          <AddBar actor={actor} listId={activeList.id} onAdded={onAdded} />
+        )}
+        <ShoppingBar
+          actor={actor}
+          list={activeList}
+          sessions={sessions}
+          profiles={profiles}
+          items={items}
+          large={kiosk}
+          controls={!kiosk}
+          onScanReceipt={() => setOverlay("receipts")}
+        />
       </header>
 
       <main className={`flex-1 px-4 pt-2 ${kiosk ? "pb-8" : "pb-28"}`}>
@@ -174,6 +247,7 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
           profiles={profiles}
           large={kiosk}
           columns={kiosk ? 3 : 2}
+          highlightIds={highlightIds}
           onEdit={setEditing}
         />
       </main>
@@ -248,6 +322,8 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
         onAdded={onAdded}
       />
 
+      <ReceiptsSheet open={overlay === "receipts"} onClose={closeOverlay} actor={actor} listId={activeList.id} />
+
       <StaplesSheet
         open={overlay === "staples"}
         onClose={closeOverlay}
@@ -282,6 +358,7 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
         actor={actor}
         profile={profiles.get(actor.userId)}
         onSignOut={() => void signOut()}
+        notifications={<NotificationSettings householdId={actor.householdId} userId={actor.userId} />}
       />
     </div>
   );

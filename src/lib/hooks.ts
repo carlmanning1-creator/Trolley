@@ -1,10 +1,11 @@
 "use client";
 
 import { useLiveQuery } from "dexie-react-hooks";
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { db } from "@/lib/db";
 import { getServerStatus, getStatus, subscribeStatus } from "@/lib/sync";
-import type { AisleRow, ListItemRow, ListRow, ProductRow, ProfileRow } from "@/lib/types";
+import { isActive } from "@/lib/shopping";
+import type { AisleRow, ListItemRow, ListRow, ProductRow, ProfileRow, ShoppingSessionRow } from "@/lib/types";
 
 export function useSyncStatus() {
   return useSyncExternalStore(subscribeStatus, getStatus, getServerStatus);
@@ -69,4 +70,18 @@ export function useBackToClose(open: boolean, close: () => void) {
       if (!poppedByBack && history.state?.trolleyOverlay === marker) history.back();
     };
   }, [open]);
+}
+
+// Shopping trips in progress on a list (re-checked each minute so forgotten trips expire).
+export function useActiveSessions(listId: string | null): ShoppingSessionRow[] {
+  const [minute, setMinute] = useState(() => Math.floor(Date.now() / 60_000));
+  useEffect(() => {
+    const t = setInterval(() => setMinute(Math.floor(Date.now() / 60_000)), 60_000);
+    return () => clearInterval(t);
+  }, []);
+  const rows = useLiveQuery(
+    async () => (listId ? await db().shopping_sessions.where("list_id").equals(listId).toArray() : []),
+    [listId],
+  );
+  return (rows ?? []).filter((s) => isActive(s, minute * 60_000 + 59_999));
 }

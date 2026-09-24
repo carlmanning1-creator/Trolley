@@ -79,6 +79,30 @@ export async function saveLocal<T extends AnyRow>(table: SyncedTable, rows: T | 
   scheduleFlush(0);
 }
 
+// Changes only the given fields, on the newest copy of the row, in one step. Two updates that
+// land close together (say the aisle from auto-sort and a picture) can never undo each other.
+export async function patchLocal<T extends AnyRow>(
+  table: SyncedTable,
+  id: string,
+  patch: Partial<T> | ((current: T) => Partial<T> | null),
+): Promise<T | undefined> {
+  const d = db();
+  const now = new Date().toISOString();
+  const result = await d.transaction("rw", d.table(table), d.outbox, async () => {
+    const current = (await d.table(table).get(id)) as T | undefined;
+    if (!current) return undefined;
+    const changes = typeof patch === "function" ? patch(current) : patch;
+    if (!changes) return current;
+    const next = { ...current, ...changes } as T;
+    await d.table(table).put(next);
+    await d.outbox.add({ table, row_id: id, queued_at: now, attempts: 0 });
+    return next;
+  });
+  await refreshPending();
+  scheduleFlush(0);
+  return result;
+}
+
 // ---------------------------------------------------------------------------
 // Applying rows that came from the server
 // ---------------------------------------------------------------------------
