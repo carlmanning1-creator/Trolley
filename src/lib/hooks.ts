@@ -10,6 +10,12 @@ export function useSyncStatus() {
   return useSyncExternalStore(subscribeStatus, getStatus, getServerStatus);
 }
 
+// Changes still waiting to reach the server, read live from the device's queue.
+// Undefined until the queue has been read at least once.
+export function usePendingCount(): number | undefined {
+  return useLiveQuery(() => db().outbox.count(), []);
+}
+
 const bySort = <T extends { sort_order: number; name: string }>(a: T, b: T) =>
   a.sort_order - b.sort_order || a.name.localeCompare(b.name);
 

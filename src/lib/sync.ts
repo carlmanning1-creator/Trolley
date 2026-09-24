@@ -51,8 +51,13 @@ export function getServerStatus(): SyncStatus {
   return SERVER_STATUS;
 }
 
+// Several of these can run at once; only the newest count is allowed to land, so an older,
+// slower read can never overwrite a newer one with a stale number.
+let pendingReadSeq = 0;
 async function refreshPending() {
-  setStatus({ pending: await db().outbox.count() });
+  const seq = ++pendingReadSeq;
+  const count = await db().outbox.count();
+  if (seq === pendingReadSeq) setStatus({ pending: count });
 }
 
 // ---------------------------------------------------------------------------

@@ -1,9 +1,13 @@
 "use client";
 
-import { useSyncStatus } from "@/lib/hooks";
+import { usePendingCount, useSyncStatus } from "@/lib/hooks";
 
 export function StatusPill() {
-  const { online, syncing, pending } = useSyncStatus();
+  const { online, syncing } = useSyncStatus();
+  const counted = usePendingCount();
+  // Never claim "Synced" before the queue has been checked.
+  const unknown = counted === undefined;
+  const pending = counted ?? 0;
 
   let text: string;
   let tone: string;
@@ -12,7 +16,7 @@ export function StatusPill() {
       ? `Offline, ${pending} change${pending === 1 ? "" : "s"} waiting`
       : "Offline";
     tone = "bg-warn-bg text-warn-fg";
-  } else if (syncing || pending) {
+  } else if (syncing || pending || unknown) {
     text = "Syncing";
     tone = "bg-surface-2 text-muted";
   } else {
@@ -29,7 +33,7 @@ export function StatusPill() {
     >
       <span
         aria-hidden
-        className={`h-2 w-2 rounded-full ${!online ? "bg-warn-fg" : syncing || pending ? "animate-pulse bg-muted" : "bg-brand"}`}
+        className={`h-2 w-2 rounded-full ${!online ? "bg-warn-fg" : syncing || pending || unknown ? "animate-pulse bg-muted" : "bg-brand"}`}
       />
       {text}
     </span>

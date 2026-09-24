@@ -26,7 +26,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en-AU" className="h-full antialiased">
       <body className="min-h-full bg-background text-foreground">
-        <SerwistProvider swUrl="/serwist/sw.js" disable={process.env.NODE_ENV === "development"}>
+        <SerwistProvider
+          swUrl="/serwist/sw.js"
+          disable={process.env.NODE_ENV === "development"}
+          // Don't reload when signal returns: it would throw away whatever someone is typing.
+          // The sync engine picks the connection back up on its own.
+          reloadOnOnline={false}
+        >
           {children}
         </SerwistProvider>
       </body>
