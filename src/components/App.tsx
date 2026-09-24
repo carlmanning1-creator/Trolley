@@ -7,12 +7,15 @@ import { ItemSheet } from "@/components/ItemSheet";
 import { ListView } from "@/components/ListView";
 import { Settings } from "@/components/Settings";
 import { Sheet } from "@/components/Sheet";
+import { PictureEditor } from "@/components/PictureEditor";
+import { ScanSheet } from "@/components/ScanSheet";
 import { StaplesSheet } from "@/components/StaplesSheet";
 import { StatusPill } from "@/components/StatusPill";
 import { APP_NAME } from "@/lib/config";
 import { openDb } from "@/lib/db";
 import { useAisles, useItems, useLists, useProducts, useProfiles, useSyncStatus } from "@/lib/hooks";
 import { autoSortProduct, sweepUnsorted } from "@/lib/autosort";
+import { findPicture, flushUploads } from "@/lib/images";
 import { updateProduct, type Actor, type AddResult } from "@/lib/mutations";
 import { startSync, stopSync } from "@/lib/sync";
 import type { ListItemRow } from "@/lib/types";
@@ -42,7 +45,7 @@ export function App({ mode = "phone" }: { mode?: "phone" | "kiosk" }) {
   return <Main key={userId} mode={mode} />;
 }
 
-type Overlay = null | "settings" | "lists" | "staples";
+type Overlay = null | "settings" | "lists" | "staples" | "scan";
 
 function Main({ mode }: { mode: "phone" | "kiosk" }) {
   const { session, profile: authProfile, signOut } = useAuth();
@@ -89,7 +92,11 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
   useEffect(() => {
     if (!ready) return;
     void sweepUnsorted();
-    const onOnline = () => void sweepUnsorted();
+    void flushUploads();
+    const onOnline = () => {
+      void sweepUnsorted();
+      void flushUploads();
+    };
     window.addEventListener("online", onOnline);
     return () => window.removeEventListener("online", onOnline);
   }, [ready]);
@@ -99,6 +106,7 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
 
   function onAdded(r: AddResult) {
     if (!r.product.aisle_id) void autoSortProduct(r.product);
+    if (!r.product.image_path) void findPicture(r.product);
     if (r.status === "already") setToast(`${r.item.name} is already on the list`);
     else if (r.status === "restored") setToast(`${r.item.name} is back on the list`);
   }
@@ -119,6 +127,7 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
 
   const nav: { key: string; label: string; icon: string; onClick: () => void }[] = [
     { key: "lists", label: "Lists", icon: "📋", onClick: () => setOverlay("lists") },
+    { key: "scan", label: "Scan", icon: "📷", onClick: () => setOverlay("scan") },
     { key: "staples", label: "Staples", icon: "⭐", onClick: () => setOverlay("staples") },
     { key: "settings", label: "Settings", icon: "⚙️", onClick: () => setOverlay("settings") },
   ];
@@ -208,6 +217,11 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
         onClose={closeEditor}
         extra={
           editingProduct && (
+            <>
+            <PictureEditor
+              product={editingProduct}
+              aisle={aisles.find((a) => a.id === (liveEditing?.aisle_id ?? editingProduct.aisle_id))}
+            />
             <label className="flex min-h-11 items-center gap-3">
               <input
                 type="checkbox"
@@ -220,8 +234,18 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
                 <span className="block text-sm text-muted">Keep it on the Staples sheet for one-tap adding</span>
               </span>
             </label>
+            </>
           )
         }
+      />
+
+      <ScanSheet
+        open={overlay === "scan"}
+        onClose={closeOverlay}
+        actor={actor}
+        listId={activeList.id}
+        aisles={aisles}
+        onAdded={onAdded}
       />
 
       <StaplesSheet

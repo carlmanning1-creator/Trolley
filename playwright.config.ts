@@ -22,6 +22,7 @@ const proxyCaArgs = existsSync(PROXY_CA)
 
 export default defineConfig({
   testDir: "tests/e2e",
+  globalSetup: "./tests/e2e/global-setup.ts",
   timeout: 60_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
@@ -32,7 +33,18 @@ export default defineConfig({
     // Set E2E_BASE_URL to test a deployed site instead of a local server.
     baseURL: process.env.E2E_BASE_URL ?? `http://localhost:${PORT}`,
     trace: "retain-on-failure",
-    launchOptions: { executablePath: CHROMIUM, args: proxyCaArgs },
+    screenshot: "only-on-failure",
+    launchOptions: {
+      executablePath: CHROMIUM,
+      args: [
+        ...proxyCaArgs,
+        // A fake camera that shows a real barcode, for the scanner test.
+        "--use-fake-ui-for-media-stream",
+        "--use-fake-device-for-media-stream",
+        "--use-file-for-fake-video-capture=tests/fixtures/barcode.y4m",
+      ],
+    },
+    permissions: ["camera"],
     // Route the test browser through the container's outbound proxy when there is one.
     proxy: process.env.HTTPS_PROXY
       ? { server: process.env.HTTPS_PROXY, bypass: "localhost,127.0.0.1" }

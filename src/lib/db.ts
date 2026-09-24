@@ -24,6 +24,9 @@ export type MetaEntry = { key: string; value: string };
 // Product pictures kept on the device so they show with no signal.
 export type ImageEntry = { path: string; blob: Blob; saved_at: string };
 
+// A picture taken on this device that still has to be uploaded (kept until there's signal).
+export type UploadEntry = { path: string; bucket: string; content_type: string; queued_at: string };
+
 export class TrolleyDB extends Dexie {
   profiles!: EntityTable<ProfileRow, "id">;
   lists!: EntityTable<ListRow, "id">;
@@ -34,6 +37,7 @@ export class TrolleyDB extends Dexie {
   outbox!: EntityTable<OutboxEntry, "seq">;
   meta!: EntityTable<MetaEntry, "key">;
   images!: EntityTable<ImageEntry, "path">;
+  uploads!: EntityTable<UploadEntry, "path">;
 
   constructor(name: string) {
     super(name);
@@ -48,6 +52,7 @@ export class TrolleyDB extends Dexie {
       meta: "key",
       images: "path",
     });
+    this.version(2).stores({ uploads: "path" });
   }
 }
 

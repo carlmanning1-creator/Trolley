@@ -36,6 +36,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/web-push": "^3.6.4",
+    "bwip-js": "^4.11.4",
     "dotenv": "^18.0.3",
     "esbuild": "^0.28.2",
     "eslint": "^9",
