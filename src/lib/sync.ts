@@ -149,9 +149,16 @@ export function isRejection(error: { status?: number } | null): boolean {
 }
 
 // Columns only the server writes.
-function forServer(row: AnyRow): Record<string, unknown> {
+function forServer(table: SyncedTable, row: AnyRow): Record<string, unknown> {
   const { synced_at: _synced, ...rest } = row as AnyRow & { synced_at?: string };
   void _synced;
+  // Items saved on the device before a column existed are missing it; send the server's
+  // default so every row in a batch has the same columns.
+  if (table === "list_items") {
+    const r = rest as Record<string, unknown>;
+    if (r.link === undefined) r.link = null;
+    if (r.distinct_from === undefined) r.distinct_from = [];
+  }
   return rest;
 }
 
@@ -172,13 +179,17 @@ export async function flush(): Promise<void> {
       const all = await d.outbox.orderBy("seq").toArray();
       if (all.length === 0) break;
 
-      // We always send a row as it is now, so send it in the position of its LATEST change.
-      // Anything that change depends on (say, the product a renamed item now points at) was
-      // queued before it, so it reaches the server first. Earlier entries for the same row
-      // are superseded and cleared with it.
+      // We always send a row as it is now, so one entry per row is enough: keep its latest and
+      // clear the earlier ones with it. Parent tables go first (SYNCED_TABLES is in that order),
+      // so an item never reaches the server before the list, aisle or product it points at,
+      // even when that product was changed again after the item was added. Within a table,
+      // queue order holds.
       const lastSeq = new Map<string, number>();
       for (const e of all) lastSeq.set(`${e.table}:${e.row_id}`, e.seq!);
-      const ordered = all.filter((e) => lastSeq.get(`${e.table}:${e.row_id}`) === e.seq);
+      const rank = (t: SyncedTable) => SYNCED_TABLES.indexOf(t);
+      const ordered = all
+        .filter((e) => lastSeq.get(`${e.table}:${e.row_id}`) === e.seq)
+        .sort((a, b) => rank(a.table) - rank(b.table) || a.seq! - b.seq!);
 
       // Take the leading run for one table (up to 100 rows), keeping queue order across tables.
       const table = ordered[0].table;
@@ -212,7 +223,7 @@ export async function flush(): Promise<void> {
             returned.push(...((res.data ?? []) as AnyRow[]));
           }
         } else {
-          const res = await sb.from(table).upsert(rows.map(forServer), { onConflict: "id" }).select();
+          const res = await sb.from(table).upsert(rows.map((r) => forServer(table, r)), { onConflict: "id" }).select();
           if (res.error) error = { ...res.error, status: res.status };
           else returned = (res.data ?? []) as AnyRow[];
         }

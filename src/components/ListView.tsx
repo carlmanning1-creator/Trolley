@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { ItemRow } from "@/components/ItemRow";
+import { findDuplicates } from "@/lib/duplicates";
 import { clearTicked, setChecked, type Actor } from "@/lib/mutations";
 import type { AisleRow, ListItemRow, ListRow, ProductRow, ProfileRow } from "@/lib/types";
 
@@ -42,6 +43,7 @@ export function ListView({
   large = false,
   columns = 1,
   onEdit,
+  onDuplicates,
 }: {
   actor: Actor;
   list: ListRow;
@@ -53,6 +55,7 @@ export function ListView({
   large?: boolean;
   columns?: 1 | 2 | 3;
   onEdit: (item: ListItemRow) => void;
+  onDuplicates?: (ids: string[]) => void;
 }) {
   const [showTicked, setShowTicked] = useState(false);
   const groups = useMemo(() => groupItems(items, aisles, list.use_aisles), [items, aisles, list.use_aisles]);
@@ -61,6 +64,7 @@ export function ListView({
     [items],
   );
   const aisleById = useMemo(() => new Map(aisles.map((a) => [a.id, a])), [aisles]);
+  const duplicates = useMemo(() => findDuplicates(items), [items]);
 
   const row = (item: ListItemRow) => (
     <ItemRow
@@ -71,8 +75,10 @@ export function ListView({
       addedBy={item.added_by ? profiles.get(item.added_by) : undefined}
       highlight={highlightIds?.has(item.id)}
       large={large}
+      duplicate={duplicates.has(item.id)}
       onToggle={() => void setChecked(actor, item, !item.checked)}
       onEdit={() => onEdit(item)}
+      onDuplicate={onDuplicates ? () => onDuplicates(duplicates.get(item.id) ?? []) : undefined}
     />
   );
 

@@ -175,9 +175,24 @@ async function aisleName(product: ProductRow): Promise<string | undefined> {
 // Finds a picture for a product with none. The server tries Open Food Facts (barcode, then
 // name), then Wikimedia Commons, then a capped Claude web search. A name that found nothing
 // isn't asked about again for 30 days, so the paid step can't repeat for the same thing.
-export async function findPicture(product: ProductRow, force = false): Promise<boolean> {
+export type FindOptions = {
+  force?: boolean; // search even if it has a picture or was tried before
+  note?: string | null; // the item's note, used to narrow the search
+  keepPhotos?: boolean; // never replace a photo someone took (default: true unless forced by hand)
+};
+
+// The note from any open item for this product, for when the caller doesn't have one.
+async function noteFor(product: ProductRow): Promise<string | null> {
+  const items = await db().list_items.where("product_id").equals(product.id).toArray();
+  return items.find((i) => !i.deleted_at && i.note?.trim())?.note?.trim() ?? null;
+}
+
+export async function findPicture(product: ProductRow, opts: FindOptions = {}): Promise<boolean> {
+  const force = opts.force ?? false;
+  const keepPhotos = opts.keepPhotos ?? !force;
   if (!force && (product.image_path || !navigator.onLine || lookedUp.has(product.id))) return false;
-  const triedKey = `pictried:${normaliseName(product.name)}`;
+  const note = opts.note !== undefined ? opts.note : await noteFor(product);
+  const triedKey = `pictried:${normaliseName(`${product.name} ${note ?? ""}`)}`;
   const tried = await getMeta(triedKey);
   if (!force && tried && Date.now() - new Date(tried).getTime() < TRIED_FOR_MS) return false;
   lookedUp.add(product.id);
@@ -191,6 +206,7 @@ export async function findPicture(product: ProductRow, force = false): Promise<b
         json: {
           productId: product.id,
           name: product.name,
+          note,
           barcode: product.barcode ?? product.off_code ?? null,
           aisle: (await aisleName(product)) ?? null,
           listName: list?.name ?? null,
@@ -203,7 +219,7 @@ export async function findPicture(product: ProductRow, force = false): Promise<b
     }
     // Someone may have taken their own photo in the meantime; theirs wins (unless asked for).
     await patchLocal<ProductRow>("products", product.id, (cur) =>
-      !force && cur.image_path && (cur.image_source === "photo" || cur.image_source === "upload")
+      keepPhotos && cur.image_path && (cur.image_source === "photo" || cur.image_source === "upload")
         ? null
         : {
             image_path: res.path!,

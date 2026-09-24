@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { AddBar } from "@/components/AddBar";
 import { useAuth } from "@/components/AuthProvider";
+import { DuplicateSheet } from "@/components/DuplicateSheet";
 import { ItemSheet } from "@/components/ItemSheet";
 import { ListView } from "@/components/ListView";
 import { Settings } from "@/components/Settings";
@@ -76,6 +77,7 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
   const [chosenList, setChosenList] = useState<string | null>(readActiveList);
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [editing, setEditing] = useState<ListItemRow | null>(null);
+  const [dupIds, setDupIds] = useState<string[] | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const kiosk = mode === "kiosk";
 
@@ -249,6 +251,7 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
           large={kiosk}
           columns={kiosk ? 3 : 2}
           highlightIds={highlightIds}
+          onDuplicates={setDupIds}
           onEdit={setEditing}
         />
       </main>
@@ -285,6 +288,14 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
           {toast}
         </div>
       )}
+
+      <DuplicateSheet
+        group={dupIds ? items.filter((i) => dupIds.includes(i.id) && !i.deleted_at && !i.checked) : null}
+        products={products}
+        aisles={aisles}
+        profiles={profiles}
+        onClose={() => setDupIds(null)}
+      />
 
       <ItemSheet
         actor={actor}

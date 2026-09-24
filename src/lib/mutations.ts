@@ -132,6 +132,7 @@ export async function addItem(
     unit,
     note: null,
     link: null,
+    distinct_from: [],
     added_by: actor.userId,
     checked: false,
     checked_by: null,
@@ -298,4 +299,55 @@ export async function moveAisle(id: string, dir: -1 | 1) {
 
 export async function updateProfile(profile: ProfileRow, patch: Partial<Pick<ProfileRow, "display_name" | "colour">>) {
   await patchLocal<ProfileRow>("profiles", profile.id, { ...patch, updated_at: nowIso() });
+}
+
+// ---------------------------------------------------------------------------
+// Duplicates
+// ---------------------------------------------------------------------------
+
+function combineQuantities(items: ListItemRow[]): { quantity: number | null; unit: string | null; leftover: string[] } {
+  const units = new Set(items.map((i) => i.unit ?? ""));
+  const anyQty = items.some((i) => i.quantity !== null);
+  if (units.size === 1) {
+    // Same unit (or none): add them up, counting an item with no quantity as one.
+    const quantity = anyQty ? items.reduce((sum, i) => sum + (i.quantity ?? 1), 0) : null;
+    return { quantity, unit: items[0].unit, leftover: [] };
+  }
+  // Different units can't be added ("2 kg" and "3 bags"): keep the first, note the rest.
+  const [first, ...rest] = items;
+  return {
+    quantity: first.quantity,
+    unit: first.unit,
+    leftover: rest
+      .filter((i) => i.quantity !== null || i.unit)
+      .map((i) => `also ${[i.quantity, i.unit].filter((x) => x !== null && x !== "").join(" ")}`),
+  };
+}
+
+// Merges duplicates into `keep`: quantities added, notes combined, first link kept.
+export async function mergeItems(keep: ListItemRow, others: ListItemRow[]): Promise<void> {
+  const all = [keep, ...others];
+  const { quantity, unit, leftover } = combineQuantities(all);
+  const notes = [...new Set([...all.map((i) => i.note?.trim()).filter((n): n is string => Boolean(n)), ...leftover])];
+  const t = nowIso();
+  await patchLocal<ListItemRow>("list_items", keep.id, {
+    quantity,
+    unit,
+    note: notes.length ? notes.join("; ") : null,
+    link: all.find((i) => i.link)?.link ?? null,
+    updated_at: t,
+  });
+  for (const o of others) await patchLocal<ListItemRow>("list_items", o.id, { deleted_at: t, updated_at: t });
+}
+
+// Marks a group as "not duplicates" so the flag doesn't come back.
+export async function keepSeparate(items: ListItemRow[]): Promise<void> {
+  const t = nowIso();
+  for (const i of items) {
+    const others = items.filter((o) => o.id !== i.id).map((o) => o.id);
+    await patchLocal<ListItemRow>("list_items", i.id, (cur) => ({
+      distinct_from: [...new Set([...(cur.distinct_from ?? []), ...others])],
+      updated_at: t,
+    }));
+  }
 }

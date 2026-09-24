@@ -48,7 +48,7 @@ export function PictureEditor({ product, aisle }: { product: ProductRow; aisle: 
     setMessage(null);
     setChoices(null);
     try {
-      const found = await findPicture(product, true);
+      const found = await findPicture(product, { force: true, keepPhotos: false });
       setMessage(found ? "Picture saved." : "No picture found on the web for that name. A photo works best.");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Couldn't search right now.");

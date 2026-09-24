@@ -16,6 +16,7 @@ export const maxDuration = 60;
 const Body = z.object({
   productId: z.string().uuid(),
   name: z.string().trim().min(1).max(120),
+  note: z.string().trim().max(200).nullable().optional(),
   barcode: z.string().regex(/^\d{6,14}$/).nullable().optional(),
   aisle: z.string().max(60).nullable().optional(),
   listName: z.string().max(60).nullable().optional(),
@@ -55,7 +56,24 @@ async function fromUrl(url: string): Promise<Buffer | null> {
   }
 }
 
+// Filler that doesn't help a picture search ("get the big one please").
+const FILLER = new Set(["the", "a", "an", "one", "ones", "please", "pls", "get", "for", "if", "any", "some", "or", "and", "of", "not", "no", "big", "small", "cheap", "cheapest", "on", "special", "sale", "brand", "whatever"]);
+
+// Search phrases to try, most specific first: the name with the useful words from the note,
+// then the name alone.
+function queries(name: string, note: string | null | undefined): string[] {
+  const extra = (note ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9. ]+/g, " ")
+    .split(/\s+/)
+    .filter((w) => w && !FILLER.has(w) && !name.toLowerCase().includes(w))
+    .slice(0, 5)
+    .join(" ");
+  return extra ? [`${name} ${extra}`, name] : [name];
+}
+
 async function find(input: z.infer<typeof Body>, householdId: string): Promise<Found | null> {
+  const phrases = queries(input.name, input.note);
   if (input.barcode) {
     try {
       const off = await lookupBarcode(input.barcode);
@@ -64,23 +82,31 @@ async function find(input: z.infer<typeof Body>, householdId: string): Promise<F
       // carry on to the next source
     }
   }
-  try {
-    const [off] = await searchByName(input.name, 3, true, input.aisle ?? null);
-    if (off?.imageUrl) return { bytes: Buffer.from((await downloadOffImage(off.imageUrl)).bytes), source: "off", offCode: off.code };
-  } catch {
-    // carry on
-  }
-  try {
-    for (const url of await searchCommons(input.name)) {
-      const bytes = await fromUrl(url);
-      if (bytes) return { bytes, source: "commons" };
+  for (const phrase of phrases) {
+    try {
+      const [off] = await searchByName(phrase, 3, true, input.aisle ?? null);
+      if (off?.imageUrl) return { bytes: Buffer.from((await downloadOffImage(off.imageUrl)).bytes), source: "off", offCode: off.code };
+    } catch {
+      // carry on
     }
-  } catch {
-    // carry on
+  }
+  for (const phrase of phrases) {
+    try {
+      for (const url of await searchCommons(phrase)) {
+        const bytes = await fromUrl(url);
+        if (bytes) return { bytes, source: "commons" };
+      }
+    } catch {
+      // carry on
+    }
   }
   if (input.allowWeb !== false && (await underMonthlyCap(householdId))) {
     try {
-      const context = [input.listName && `on the ${input.listName} list`, input.aisle && `aisle: ${input.aisle}`]
+      const context = [
+        input.note && `the family's note: "${input.note}"`,
+        input.listName && `on the ${input.listName} list`,
+        input.aisle && `aisle: ${input.aisle}`,
+      ]
         .filter(Boolean)
         .join(", ");
       for (const url of await webPictureCandidates(input.name, context || null)) {

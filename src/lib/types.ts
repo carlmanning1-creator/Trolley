@@ -64,6 +64,7 @@ export type ListItemRow = Stamps & {
   unit: string | null;
   note: string | null;
   link: string | null;
+  distinct_from?: string[];
   added_by: string | null;
   checked: boolean;
   checked_by: string | null;

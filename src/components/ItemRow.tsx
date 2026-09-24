@@ -16,8 +16,10 @@ export function ItemRow({
   addedBy,
   highlight,
   large,
+  duplicate,
   onToggle,
   onEdit,
+  onDuplicate,
 }: {
   item: ListItemRow;
   product: ProductRow | undefined;
@@ -25,8 +27,10 @@ export function ItemRow({
   addedBy: ProfileRow | undefined;
   highlight?: boolean;
   large?: boolean;
+  duplicate?: boolean;
   onToggle: () => void;
   onEdit: () => void;
+  onDuplicate?: () => void;
 }) {
   const [dx, setDx] = useState(0);
   // Set when a long press or swipe opened the editor, so the click that follows doesn't tick.
@@ -95,7 +99,9 @@ export function ItemRow({
 
   return (
     <li
-      className={`relative overflow-hidden rounded-2xl ${highlight ? "ring-2 ring-amber-400" : ""}`}
+      className={`relative overflow-hidden rounded-2xl ${highlight ? "ring-2 ring-amber-400" : ""} ${
+        duplicate ? "border-l-4 border-amber-400" : ""
+      }`}
       data-testid="list-item"
       data-name={item.name}
       data-checked={item.checked}
@@ -135,7 +141,7 @@ export function ItemRow({
           <ProductThumb product={product} aisle={aisle} size={large ? 64 : 48} />
           <span className="min-w-0 flex-1">
             <span
-              className={`block truncate font-medium ${large ? "text-3xl" : "text-lg"} ${
+              className={`block line-clamp-2 break-words font-medium ${large ? "text-3xl" : "text-lg"} ${
                 item.checked ? "text-muted line-through" : ""
               }`}
             >
@@ -159,6 +165,17 @@ export function ItemRow({
             </span>
           )}
         </button>
+        {duplicate && onDuplicate && (
+          <button
+            type="button"
+            onClick={onDuplicate}
+            aria-label={`${item.name} might be a duplicate. Review`}
+            title="Possible duplicate"
+            className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full bg-warn-bg text-lg font-bold text-warn-fg"
+          >
+            <span aria-hidden>⚠</span>
+          </button>
+        )}
         {item.link && (
           <a
             href={item.link}

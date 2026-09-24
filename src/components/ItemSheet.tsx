@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { Sheet } from "@/components/Sheet";
 import { autoSortProduct } from "@/lib/autosort";
+import { db } from "@/lib/db";
 import { findPicture } from "@/lib/images";
 import { deleteItem, updateItem, type Actor } from "@/lib/mutations";
 import type { AisleRow, ListItemRow } from "@/lib/types";
@@ -73,10 +74,17 @@ function ItemForm({
       link: cleanLink,
       ...(aisleId !== (item.aisle_id ?? "") ? { aisle_id: aisleId || null } : {}),
     });
+    const newNote = note.trim() || null;
     // Renamed to something else: find that thing's aisle and picture.
     if (relinked) {
       if (!relinked.aisle_id) void autoSortProduct(relinked);
-      if (!relinked.image_path) void findPicture(relinked);
+      if (!relinked.image_path) void findPicture(relinked, { note: newNote });
+    } else if (newNote !== (item.note ?? null) && item.product_id) {
+      // A changed note can say which one ("Sanitarium 1.2kg"): look again, keeping any photo.
+      const product = await db().products.get(item.product_id);
+      if (product && product.image_source !== "photo" && product.image_source !== "upload") {
+        void findPicture(product, { force: true, note: newNote, keepPhotos: true });
+      }
     }
     onClose();
   }
