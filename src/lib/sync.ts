@@ -111,18 +111,12 @@ export function scheduleFlush(delay = 0) {
   }, delay);
 }
 
-function isNetworkError(error: { message?: string; code?: string; status?: number } | null): boolean {
-  if (!error) return false;
-  const msg = (error.message ?? "").toLowerCase();
-  return (
-    msg.includes("failed to fetch") ||
-    msg.includes("network") ||
-    msg.includes("load failed") ||
-    msg.includes("timeout") ||
-    msg.includes("fetch") ||
-    error.code === "" ||
-    (typeof error.status === "number" && (error.status === 0 || error.status >= 500))
-  );
+// Only a real answer from the server saying "no" counts as a rejection. Anything else (no signal,
+// a request cut off mid-way, a timeout, a server hiccup, an expired sign-in) just waits and retries,
+// however long that takes, so a change is never dropped because the signal was bad.
+export function isRejection(error: { status?: number } | null): boolean {
+  const status = error?.status ?? 0;
+  return status >= 400 && status < 500 && ![401, 408, 429].includes(status);
 }
 
 // Columns only the server writes.
@@ -186,7 +180,7 @@ export async function flush(): Promise<void> {
       }
 
       if (error) {
-        if (isNetworkError(error)) {
+        if (!isRejection(error)) {
           setStatus({ online: false });
           scheduleFlush(retryDelay);
           retryDelay = Math.min(retryDelay * 2, 30000);

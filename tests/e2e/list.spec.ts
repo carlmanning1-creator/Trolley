@@ -184,12 +184,13 @@ test("both phones offline: add, tick and delete, then reconnect and agree", asyn
 
 test("opens with no signal after the first visit", async ({ page, context }) => {
   await signInThroughUi(page, alice);
-  await expect(item(page, "Cheese")).toBeVisible();
+  await add(page, "Online butter");
+  await waitSynced(page);
   // Wait until the service worker controls the page, so the app shell is cached.
   await page.waitForFunction(() => navigator.serviceWorker?.controller != null, null, { timeout: 30_000 });
   await context.setOffline(true);
   await page.reload();
-  await expect(item(page, "Cheese")).toBeVisible();
+  await expect(item(page, "Online butter")).toBeVisible();
   await add(page, "Offline bread");
   await expect(item(page, "Offline bread")).toBeVisible();
   await expect(page.getByTestId("sync-status")).toContainText("Offline");

@@ -7,11 +7,13 @@ import { ItemSheet } from "@/components/ItemSheet";
 import { ListView } from "@/components/ListView";
 import { Settings } from "@/components/Settings";
 import { Sheet } from "@/components/Sheet";
+import { StaplesSheet } from "@/components/StaplesSheet";
 import { StatusPill } from "@/components/StatusPill";
 import { APP_NAME } from "@/lib/config";
 import { openDb } from "@/lib/db";
 import { useAisles, useItems, useLists, useProducts, useProfiles, useSyncStatus } from "@/lib/hooks";
-import type { Actor, AddResult } from "@/lib/mutations";
+import { autoSortProduct, sweepUnsorted } from "@/lib/autosort";
+import { updateProduct, type Actor, type AddResult } from "@/lib/mutations";
 import { startSync, stopSync } from "@/lib/sync";
 import type { ListItemRow } from "@/lib/types";
 
@@ -40,7 +42,7 @@ export function App({ mode = "phone" }: { mode?: "phone" | "kiosk" }) {
   return <Main key={userId} mode={mode} />;
 }
 
-type Overlay = null | "settings" | "lists";
+type Overlay = null | "settings" | "lists" | "staples";
 
 function Main({ mode }: { mode: "phone" | "kiosk" }) {
   const { session, profile: authProfile, signOut } = useAuth();
@@ -83,27 +85,41 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
     return () => clearTimeout(t);
   }, [toast]);
 
+  // Sort anything still unsorted once the device has caught up, and again when signal returns.
+  useEffect(() => {
+    if (!ready) return;
+    void sweepUnsorted();
+    const onOnline = () => void sweepUnsorted();
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, [ready]);
+
   const closeOverlay = useCallback(() => setOverlay(null), []);
   const closeEditor = useCallback(() => setEditing(null), []);
 
   function onAdded(r: AddResult) {
+    if (!r.product.aisle_id) void autoSortProduct(r.product);
     if (r.status === "already") setToast(`${r.item.name} is already on the list`);
     else if (r.status === "restored") setToast(`${r.item.name} is back on the list`);
   }
 
   // Keep the editor showing the latest version of the item if it changes elsewhere.
   const liveEditing = editing ? (items.find((i) => i.id === editing.id) ?? null) : null;
+  const editingProduct = liveEditing?.product_id ? products.get(liveEditing.product_id) : undefined;
 
-  if (!lists || !activeList) {
+  // The first time on a device, wait for the first full download so nothing gets added twice.
+  // After that the app opens straight from the device, signal or not.
+  if (!ready || !lists || !activeList) {
     return (
       <div className="flex min-h-dvh items-center justify-center p-6 text-center text-muted" role="status">
-        {ready || lists ? "Getting your lists…" : "Getting your lists… (this needs signal the first time)"}
+        {ready ? "Getting your lists…" : "Getting your lists… (this needs signal the first time)"}
       </div>
     );
   }
 
   const nav: { key: string; label: string; icon: string; onClick: () => void }[] = [
     { key: "lists", label: "Lists", icon: "📋", onClick: () => setOverlay("lists") },
+    { key: "staples", label: "Staples", icon: "⭐", onClick: () => setOverlay("staples") },
     { key: "settings", label: "Settings", icon: "⚙️", onClick: () => setOverlay("settings") },
   ];
 
@@ -186,7 +202,35 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
         </div>
       )}
 
-      <ItemSheet item={liveEditing} aisles={aisles} onClose={closeEditor} />
+      <ItemSheet
+        item={liveEditing}
+        aisles={aisles}
+        onClose={closeEditor}
+        extra={
+          editingProduct && (
+            <label className="flex min-h-11 items-center gap-3">
+              <input
+                type="checkbox"
+                checked={editingProduct.is_staple}
+                onChange={(e) => void updateProduct(editingProduct, { is_staple: e.target.checked })}
+                className="h-5 w-5 accent-[var(--brand)]"
+              />
+              <span>
+                <span className="font-medium">Staple</span>
+                <span className="block text-sm text-muted">Keep it on the Staples sheet for one-tap adding</span>
+              </span>
+            </label>
+          )
+        }
+      />
+
+      <StaplesSheet
+        open={overlay === "staples"}
+        onClose={closeOverlay}
+        actor={actor}
+        listId={activeList.id}
+        aisles={aisles}
+      />
 
       <Sheet open={overlay === "lists"} onClose={closeOverlay} title="Lists">
         <ListPicker

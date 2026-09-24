@@ -256,4 +256,12 @@ Design the data model so these slot in later without migrations that break exist
 
 ---
 
+## Current status notes (kept up to date by Claude Code)
+
+- **Bec and Grace are held back.** At Carl's request (preliminary testing), only Carl's account exists. Their accounts were removed so no sign-in code can be sent to them. Do not run `npm run seed:users` until Carl says to add them; that command recreates both accounts and profiles.
+- Supabase project ref: `bfcmyfpubbxqlidyuxqd` (Sydney). Vercel project: `trolley` (team "Carl's projects"), production URL https://trolley-iota.vercel.app.
+- Browser tests (`npm run test:e2e`) use throwaway households and never send real emails.
+
+---
+
 @AGENTS.md
