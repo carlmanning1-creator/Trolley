@@ -26,6 +26,7 @@ import {
   useProfiles,
   useSyncStatus,
 } from "@/lib/hooks";
+import { downloadCsv, printList, shareList } from "@/lib/exportList";
 import { processPendingReceipts } from "@/lib/receipts";
 import { noticeItemAdded, sendPendingNotices } from "@/lib/shopping";
 import { autoSortProduct, sweepUnsorted } from "@/lib/autosort";
@@ -286,6 +287,7 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
       )}
 
       <ItemSheet
+        actor={actor}
         item={liveEditing}
         aisles={aisles}
         onClose={closeEditor}
@@ -341,13 +343,46 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
             closeOverlay();
           }}
           footer={
-            <button
-              type="button"
-              onClick={() => setOverlay("settings")}
-              className="min-h-12 w-full rounded-xl border border-border font-medium"
-            >
-              Add, rename or reorder lists
-            </button>
+            <div className="flex flex-col gap-3">
+              <div>
+                <p className="mb-2 font-semibold">
+                  Export {activeList.icon} {activeList.name}
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const how = await shareList({ list: activeList, items, aisles, profiles });
+                      if (how === "copied") setToast("List copied. Paste it anywhere.");
+                    }}
+                    className="min-h-12 rounded-xl border border-border px-2 text-sm font-medium"
+                  >
+                    📤 Share
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => downloadCsv({ list: activeList, items, aisles, profiles })}
+                    className="min-h-12 rounded-xl border border-border px-2 text-sm font-medium"
+                  >
+                    📊 Spreadsheet
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => printList({ list: activeList, items, aisles, profiles })}
+                    className="min-h-12 rounded-xl border border-border px-2 text-sm font-medium"
+                  >
+                    🖨️ Print
+                  </button>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOverlay("settings")}
+                className="min-h-12 w-full rounded-xl border border-border font-medium"
+              >
+                Add, rename or reorder lists
+              </button>
+            </div>
           }
         />
       </Sheet>

@@ -6,7 +6,7 @@ import { ProductThumb } from "@/components/ProductThumb";
 import { Sheet } from "@/components/Sheet";
 import { autoSortProduct } from "@/lib/autosort";
 import { db } from "@/lib/db";
-import { applyOffPicture, offLookupBarcode, type OffProduct } from "@/lib/images";
+import { findPicture, offLookupBarcode, type OffProduct } from "@/lib/images";
 import { aisleForName } from "@/lib/keywords";
 import { addItem, aisleIdByName, createProduct, updateProduct, type Actor, type AddResult } from "@/lib/mutations";
 import type { AisleRow, ProductRow } from "@/lib/types";
@@ -231,7 +231,8 @@ function Result({
             off_code: found.off.code,
             aisle_id: await aisleIdByName(aisleName),
           }));
-        void applyOffPicture(product, found.off).catch(() => undefined);
+        // Same picture path as everything else (barcode first, with retries and fallbacks).
+        void findPicture(product);
       } else {
         const clean = name.trim();
         if (!clean) {

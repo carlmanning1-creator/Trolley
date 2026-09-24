@@ -91,7 +91,7 @@ Use client-generated UUIDs for every row so records can be created offline. Ever
 
 - **households**: `id`, `name`
 - **profiles**: `id` (auth user id), `household_id`, `display_name`, `colour`
-- **lists**: `id`, `household_id`, `name`, `icon`, `sort_order`. Seed with Groceries, Bunnings, Chemist, Kmart.
+- **lists**: `id`, `household_id`, `name`, `icon`, `sort_order`. Seed with Groceries, Bunnings, Other, Wish List (Carl's choice, replacing the original Chemist and Kmart).
 - **aisles**: `id`, `household_id`, `name`, `sort_order`. Seed in this order: Fruit & Veg, Bakery, Deli, Meat & Seafood, Dairy & Eggs, Fridge, Frozen, Pantry, Breakfast, Snacks & Lollies, Drinks, Health & Beauty, Baby, Cleaning & Household, Pet, Other. Users can reorder and rename.
 - **products** (the household's own catalogue, built up as items get added): `id`, `household_id`, `name`, `barcode`, `aisle_id`, `image_path`, `image_source` (`off`, `photo`, `upload`, `none`), `off_code`, `is_staple`, `default_quantity`, `default_unit`, `times_bought`, `last_bought_at`
 - **list_items**: `id`, `list_id`, `product_id`, `name`, `quantity`, `unit`, `note`, `added_by`, `checked`, `checked_by`, `checked_at`, plus timestamps
@@ -263,6 +263,8 @@ Design the data model so these slot in later without migrations that break exist
 - Browser tests (`npm run test:e2e`) use throwaway households and never send real emails.
 - The Anthropic key reaches this container as `TROLLEY_ANTHROPIC_KEY` (the harness reserves `ANTHROPIC_API_KEY`); the app itself reads `ANTHROPIC_API_KEY` from `.env.local` and Vercel.
 - Receipt reading passes its accuracy test on `claude-haiku-4-5-20251001`, so `ANTHROPIC_RECEIPT_MODEL` stays on Haiku.
+- Pictures (Carl's request, Sept 2026): sources in order are Open Food Facts (barcode, then strict name + aisle match), Wikimedia Commons (free), then Claude web search via the Anthropic key, capped at 150 lookups per household per month (`usage_counters`). Coles and Woolworths are deliberately excluded (their terms forbid scraping). A name that finds nothing isn't retried for 30 days. Renaming an item links it to the product with the new name and looks for that picture; photos people took are never replaced automatically.
+- Items have an optional `link`; lists export as shared text, CSV or print (Lists sheet).
 - In this cloud container, browser WebSockets are blocked and Open Food Facts images are slow; live push is proven by `tests/integration/realtime.test.ts` and picture tests are best judged against the live site.
 
 ---

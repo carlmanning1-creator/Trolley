@@ -159,6 +159,17 @@ export function ItemRow({
             </span>
           )}
         </button>
+        {item.link && (
+          <a
+            href={item.link}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`Open link for ${item.name}`}
+            className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full text-xl hover:bg-surface-2"
+          >
+            🔗
+          </a>
+        )}
         <button
           type="button"
           onClick={onEdit}

@@ -8,7 +8,7 @@ const aisle = (id: string, name: string, sort_order: number): AisleRow => ({
 });
 const item = (id: string, name: string, aisle_id: string | null, checked = false, created_at = t): ListItemRow => ({
   id, household_id: "h", list_id: "l", product_id: null, aisle_id, name, quantity: null, unit: null, note: null,
-  added_by: null, checked, checked_by: null, checked_at: null, check_changed_at: null, created_at, updated_at: t,
+  link: null, added_by: null, checked, checked_by: null, checked_at: null, check_changed_at: null, created_at, updated_at: t,
   deleted_at: null,
 });
 

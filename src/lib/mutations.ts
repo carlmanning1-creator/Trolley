@@ -131,6 +131,7 @@ export async function addItem(
     quantity,
     unit,
     note: null,
+    link: null,
     added_by: actor.userId,
     checked: false,
     checked_by: null,
@@ -156,10 +157,35 @@ export async function setChecked(actor: Actor, item: ListItemRow, checked: boole
   });
 }
 
+// Returns the item's product when a rename moved it to a different one, so the caller can
+// look for that product's picture and aisle.
 export async function updateItem(
+  actor: Actor,
   item: ListItemRow,
-  patch: Partial<Pick<ListItemRow, "name" | "quantity" | "unit" | "note" | "aisle_id">>,
-): Promise<void> {
+  patch: Partial<Pick<ListItemRow, "name" | "quantity" | "unit" | "note" | "link" | "aisle_id">>,
+): Promise<ProductRow | null> {
+  let relinked: ProductRow | null = null;
+  if (patch.name !== undefined && normaliseName(patch.name) !== normaliseName(item.name)) {
+    // A new name is a different thing ("Milk" to "Oat milk"): point the item at the product
+    // with that name, creating it if needed. The old product and its photo are left alone.
+    const byName = await findProductByName(patch.name);
+    relinked =
+      byName ??
+      (await createProduct(actor, {
+        name: patch.name.trim(),
+        ...(aisleForName(patch.name) ? {} : { aisle_id: patch.aisle_id ?? item.aisle_id }),
+      }));
+    patch = {
+      ...patch,
+      aisle_id: patch.aisle_id !== undefined && patch.aisle_id !== item.aisle_id ? patch.aisle_id : (relinked.aisle_id ?? item.aisle_id),
+    };
+    await patchLocal<ListItemRow>("list_items", item.id, { ...patch, product_id: relinked.id, updated_at: nowIso() });
+    // An aisle picked in the same edit teaches the new product too.
+    if (patch.aisle_id && relinked.aisle_id !== patch.aisle_id) {
+      relinked = await updateProduct(relinked, { aisle_id: patch.aisle_id });
+    }
+    return relinked;
+  }
   await patchLocal<ListItemRow>("list_items", item.id, { ...patch, updated_at: nowIso() });
   // Moving an item to another aisle teaches the catalogue, so it lands there next time.
   if (patch.aisle_id !== undefined && item.product_id) {
@@ -178,6 +204,7 @@ export async function updateItem(
       }
     }
   }
+  return null;
 }
 
 export async function deleteItem(item: ListItemRow): Promise<void> {

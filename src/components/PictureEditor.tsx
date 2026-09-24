@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { ProductThumb } from "@/components/ProductThumb";
-import { applyOffPicture, offSearch, setProductPhoto, type OffProduct } from "@/lib/images";
+import { applyOffPicture, findPicture, offSearch, setProductPhoto, type OffProduct } from "@/lib/images";
 import type { AisleRow, ProductRow } from "@/lib/types";
 
 // Replace a product's picture: take a photo, upload one, or pick one from Open Food Facts.
@@ -43,6 +43,20 @@ export function PictureEditor({ product, aisle }: { product: ProductRow; aisle: 
     }
   }
 
+  async function searchWeb() {
+    setBusy(true);
+    setMessage(null);
+    setChoices(null);
+    try {
+      const found = await findPicture(product, true);
+      setMessage(found ? "Picture saved." : "No picture found on the web for that name. A photo works best.");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Couldn't search right now.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function pick(off: OffProduct) {
     setBusy(true);
     try {
@@ -70,7 +84,10 @@ export function PictureEditor({ product, aisle }: { product: ProductRow; aisle: 
             Upload
           </button>
           <button type="button" className={btn} onClick={() => void findOnline()}>
-            Find online
+            Food database
+          </button>
+          <button type="button" className={btn} onClick={() => void searchWeb()}>
+            Search the web
           </button>
         </div>
       </div>

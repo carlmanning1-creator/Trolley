@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { callApi } from "@/lib/api";
-import { db } from "@/lib/db";
+import { db, getMeta, setMeta } from "@/lib/db";
 import { resizeImage } from "@/lib/imageResize";
-import { nowIso, updateProduct } from "@/lib/mutations";
+import { normaliseName, nowIso, updateProduct } from "@/lib/mutations";
 import { patchLocal } from "@/lib/sync";
 import { supabase } from "@/lib/supabase";
-import type { ProductRow } from "@/lib/types";
+import type { ImageSource, ProductRow } from "@/lib/types";
 
 export const PRODUCT_BUCKET = "product-images";
 
@@ -164,6 +164,7 @@ export async function applyOffPicture(product: ProductRow, off: OffProduct): Pro
 }
 
 const lookedUp = new Set<string>();
+const TRIED_FOR_MS = 30 * 24 * 60 * 60 * 1000;
 
 // The product's aisle name, from the newest copy (auto-sort may have just set it).
 async function aisleName(product: ProductRow): Promise<string | undefined> {
@@ -171,20 +172,52 @@ async function aisleName(product: ProductRow): Promise<string | undefined> {
   return fresh.aisle_id ? (await db().aisles.get(fresh.aisle_id))?.name : undefined;
 }
 
-// Step after adding: find a picture for a product that has none.
-// Barcode lookup when we have a barcode, otherwise a name search limited to results with pictures.
-export async function findPicture(product: ProductRow): Promise<void> {
-  if (product.image_path || !navigator.onLine || lookedUp.has(product.id)) return;
+// Finds a picture for a product with none. The server tries Open Food Facts (barcode, then
+// name), then Wikimedia Commons, then a capped Claude web search. A name that found nothing
+// isn't asked about again for 30 days, so the paid step can't repeat for the same thing.
+export async function findPicture(product: ProductRow, force = false): Promise<boolean> {
+  if (!force && (product.image_path || !navigator.onLine || lookedUp.has(product.id))) return false;
+  const triedKey = `pictried:${normaliseName(product.name)}`;
+  const tried = await getMeta(triedKey);
+  if (!force && tried && Date.now() - new Date(tried).getTime() < TRIED_FOR_MS) return false;
   lookedUp.add(product.id);
   try {
-    const code = product.barcode ?? product.off_code;
-    const off = code
-      ? await offLookupBarcode(code)
-      : (await offSearch(product.name, true, (await aisleName(product)) ?? null))[0] ?? null;
-    if (off?.imageUrl) await applyOffPicture(product, off);
+    const item = await db().list_items.where("product_id").equals(product.id).first();
+    const list = item ? await db().lists.get(item.list_id) : undefined;
+    const res = await callApi<{ found: boolean; path?: string; source?: ImageSource; offCode?: string | null }>(
+      "/api/pictures/find",
+      {
+        method: "POST",
+        json: {
+          productId: product.id,
+          name: product.name,
+          barcode: product.barcode ?? product.off_code ?? null,
+          aisle: (await aisleName(product)) ?? null,
+          listName: list?.name ?? null,
+        },
+      },
+    );
+    if (!res.found || !res.path) {
+      await setMeta(triedKey, nowIso());
+      return false;
+    }
+    // Someone may have taken their own photo in the meantime; theirs wins (unless asked for).
+    await patchLocal<ProductRow>("products", product.id, (cur) =>
+      !force && cur.image_path && (cur.image_source === "photo" || cur.image_source === "upload")
+        ? null
+        : {
+            image_path: res.path!,
+            image_source: res.source ?? "web",
+            ...(res.offCode ? { off_code: res.offCode } : {}),
+            updated_at: nowIso(),
+          },
+    );
+    return true;
   } catch {
-    // No picture this time; the placeholder stays and someone can add a photo.
+    // No signal or a busy service: the next sweep tries again.
     lookedUp.delete(product.id);
+    if (force) throw new Error("Couldn't search right now. Check your signal.");
+    return false;
   }
 }
 

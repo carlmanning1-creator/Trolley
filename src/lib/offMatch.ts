@@ -29,3 +29,16 @@ export function nameFit(query: string, name: string, brand: string | null, au: b
   score -= Math.max(0, nameOnly.length - q.length) * 3; // prefer plain names over long variants
   return score;
 }
+
+// How well a Wikimedia Commons file title fits what someone typed. Every typed word must be
+// in the title; short, plain titles and product-style shots ("white background") rank first.
+export function commonsFit(query: string, title: string): number | null {
+  const q = words(query);
+  const t = words(title.replace(/^file:/i, "").replace(/\.(jpe?g|png|webp|gif|tiff?)$/i, ""));
+  if (q.length === 0 || !q.every((w) => t.includes(w))) return null;
+  let score = 50 - Math.max(0, t.length - q.length) * 4;
+  if (/white background|isolated|studio|product/i.test(title)) score += 15;
+  // People, paintings, maps and diagrams aren't what anyone means by "bananas".
+  if (/\b(boy|girl|man|woman|people|painting|map|diagram|logo|chart|poster|stamp|coat of arms)\b/i.test(title)) score -= 40;
+  return score;
+}

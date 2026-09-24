@@ -1,4 +1,6 @@
 -- The Manning household, its starting lists and the default aisle walk.
+-- Lists updated to Carl's chosen set (Groceries, Bunnings, Other, Wish List); this only
+-- affects a fresh install, the live household already has them.
 -- People are added by scripts/seed-users.mjs, which creates the auth accounts first.
 
 insert into public.households (id, name)
@@ -10,8 +12,8 @@ select '6b0f5a52-8f7e-4c1e-9a53-3f7c2d1b9e01', v.name, v.icon, v.sort_order, v.u
 from (values
   ('Groceries', '🛒', 1, true),
   ('Bunnings', '🔨', 2, false),
-  ('Chemist', '💊', 3, false),
-  ('Kmart', '🛍️', 4, false)
+  ('Other', '🛍️', 3, false),
+  ('Wish List', '📝', 4, false)
 ) as v (name, icon, sort_order, use_aisles)
 where not exists (
   select 1 from public.lists where household_id = '6b0f5a52-8f7e-4c1e-9a53-3f7c2d1b9e01'

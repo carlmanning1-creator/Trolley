@@ -56,7 +56,7 @@ test("scanning a real barcode with the camera adds it with its picture and aisle
 
   await expect.poll(async () => (await admin.from("products").select("image_source, image_path, barcode").eq("household_id", house.id).ilike("name", "%vegemite%").single()).data, { timeout: 20_000 }).toMatchObject({ image_source: "off", barcode: "9300650658615" });
   const { data: files } = await admin.storage.from("product-images").list(house.id);
-  expect(files?.some((f) => f.name.endsWith("-off.jpg") || f.name.endsWith("-off.png") || f.name.endsWith("-off.webp"))).toBe(true);
+  expect(files?.some((f) => /-off(-\d+)?\.(jpg|png|webp)$/.test(f.name))).toBe(true);
 });
 
 test("scanning it again comes straight from the catalogue", async ({ page }) => {

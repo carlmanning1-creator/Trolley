@@ -34,7 +34,7 @@ export type AisleRow = Stamps & {
   deleted_at: string | null;
 };
 
-export type ImageSource = "off" | "photo" | "upload" | "none";
+export type ImageSource = "off" | "photo" | "upload" | "none" | "commons" | "web";
 
 export type ProductRow = Stamps & {
   id: string;
@@ -63,6 +63,7 @@ export type ListItemRow = Stamps & {
   quantity: number | null;
   unit: string | null;
   note: string | null;
+  link: string | null;
   added_by: string | null;
   checked: boolean;
   checked_by: string | null;

@@ -2,17 +2,21 @@
 
 import { useState, type FormEvent } from "react";
 import { Sheet } from "@/components/Sheet";
-import { deleteItem, updateItem } from "@/lib/mutations";
+import { autoSortProduct } from "@/lib/autosort";
+import { findPicture } from "@/lib/images";
+import { deleteItem, updateItem, type Actor } from "@/lib/mutations";
 import type { AisleRow, ListItemRow } from "@/lib/types";
 
 const UNIT_OPTIONS = ["", "kg", "g", "L", "mL", "pack", "dozen", "bunch", "can", "bottle", "bag", "box", "jar", "loaf"];
 
 export function ItemSheet({
+  actor,
   item,
   aisles,
   onClose,
   extra,
 }: {
+  actor: Actor;
   item: ListItemRow | null;
   aisles: AisleRow[];
   onClose: () => void;
@@ -20,17 +24,19 @@ export function ItemSheet({
 }) {
   return (
     <Sheet open={Boolean(item)} onClose={onClose} title="Edit item">
-      {item && <ItemForm key={item.id} item={item} aisles={aisles} onClose={onClose} extra={extra} />}
+      {item && <ItemForm key={item.id} actor={actor} item={item} aisles={aisles} onClose={onClose} extra={extra} />}
     </Sheet>
   );
 }
 
 function ItemForm({
+  actor,
   item,
   aisles,
   onClose,
   extra,
 }: {
+  actor: Actor;
   item: ListItemRow;
   aisles: AisleRow[];
   onClose: () => void;
@@ -40,18 +46,38 @@ function ItemForm({
   const [quantity, setQuantity] = useState(item.quantity === null ? "" : String(item.quantity));
   const [unit, setUnit] = useState(item.unit ?? "");
   const [note, setNote] = useState(item.note ?? "");
+  const [link, setLink] = useState(item.link ?? "");
+  const [linkError, setLinkError] = useState<string | null>(null);
   const [aisleId, setAisleId] = useState(item.aisle_id ?? "");
 
   async function save(e: FormEvent) {
     e.preventDefault();
     const q = quantity.trim() === "" ? null : Number(quantity.replace(",", "."));
-    await updateItem(item, {
+    let cleanLink: string | null = link.trim() || null;
+    if (cleanLink && !/^https?:\/\//i.test(cleanLink)) cleanLink = `https://${cleanLink}`;
+    if (cleanLink) {
+      try {
+        const u = new URL(cleanLink);
+        if (!/^https?:$/.test(u.protocol) || !u.hostname.includes(".")) throw new Error();
+        cleanLink = u.toString();
+      } catch {
+        setLinkError("That doesn't look like a web address.");
+        return;
+      }
+    }
+    const relinked = await updateItem(actor, item, {
       name: name.trim() || item.name,
       quantity: q !== null && Number.isFinite(q) && q > 0 ? q : null,
       unit: unit || null,
       note: note.trim() || null,
+      link: cleanLink,
       ...(aisleId !== (item.aisle_id ?? "") ? { aisle_id: aisleId || null } : {}),
     });
+    // Renamed to something else: find that thing's aisle and picture.
+    if (relinked) {
+      if (!relinked.aisle_id) void autoSortProduct(relinked);
+      if (!relinked.image_path) void findPicture(relinked);
+    }
     onClose();
   }
 
@@ -107,6 +133,32 @@ function ItemForm({
           onChange={(e) => setNote(e.target.value)}
           className={field}
         />
+      </div>
+      <div>
+        <label htmlFor="item-link" className="mb-1 block font-medium">
+          Link
+        </label>
+        <input
+          id="item-link"
+          type="text"
+          inputMode="url"
+          autoComplete="off"
+          autoCapitalize="none"
+          placeholder="e.g. a product page"
+          value={link}
+          onChange={(e) => {
+            setLink(e.target.value);
+            setLinkError(null);
+          }}
+          aria-invalid={Boolean(linkError)}
+          aria-describedby={linkError ? "item-link-error" : undefined}
+          className={field}
+        />
+        {linkError && (
+          <p id="item-link-error" role="alert" className="mt-1 text-sm text-danger">
+            {linkError}
+          </p>
+        )}
       </div>
       <div>
         <label htmlFor="item-aisle" className="mb-1 block font-medium">

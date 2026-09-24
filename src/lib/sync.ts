@@ -169,16 +169,26 @@ export async function flush(): Promise<void> {
   const sb = supabase();
   try {
     for (;;) {
-      const batch = await d.outbox.orderBy("seq").limit(100).toArray();
-      if (batch.length === 0) break;
+      const all = await d.outbox.orderBy("seq").toArray();
+      if (all.length === 0) break;
 
-      // Take the leading run of entries for one table, keeping queue order across tables.
-      const table = batch[0].table;
+      // We always send a row as it is now, so send it in the position of its LATEST change.
+      // Anything that change depends on (say, the product a renamed item now points at) was
+      // queued before it, so it reaches the server first. Earlier entries for the same row
+      // are superseded and cleared with it.
+      const lastSeq = new Map<string, number>();
+      for (const e of all) lastSeq.set(`${e.table}:${e.row_id}`, e.seq!);
+      const ordered = all.filter((e) => lastSeq.get(`${e.table}:${e.row_id}`) === e.seq);
+
+      // Take the leading run for one table (up to 100 rows), keeping queue order across tables.
+      const table = ordered[0].table;
       const group: OutboxEntry[] = [];
-      for (const e of batch) {
-        if (e.table !== table) break;
+      for (const e of ordered) {
+        if (e.table !== table || group.length >= 100) break;
         group.push(e);
       }
+      const superseded = (e: OutboxEntry) =>
+        all.filter((x) => x.table === e.table && x.row_id === e.row_id && x.seq! <= e.seq!).map((x) => x.seq!);
       const ids = [...new Set(group.map((e) => e.row_id))];
       const rows = (await d.table(table).bulkGet(ids)).filter(Boolean) as AnyRow[];
 
@@ -218,7 +228,7 @@ export async function flush(): Promise<void> {
         // The server refused these rows. Retry a few times (a missing parent row may still be
         // on its way), then drop them so one bad change can't block everything behind it.
         console.warn("Sync refused a change", table, error);
-        const tooMany = group.filter((e) => e.attempts + 1 >= MAX_ATTEMPTS).map((e) => e.seq!);
+        const tooMany = group.filter((e) => e.attempts + 1 >= MAX_ATTEMPTS).flatMap(superseded);
         const retry = group.filter((e) => e.attempts + 1 < MAX_ATTEMPTS);
         await d.outbox.bulkDelete(tooMany);
         await Promise.all(retry.map((e) => d.outbox.update(e.seq!, { attempts: e.attempts + 1 })));
@@ -236,7 +246,7 @@ export async function flush(): Promise<void> {
       }
 
       // Success: clear what we sent, then store the row exactly as the server settled it.
-      await d.outbox.bulkDelete(group.map((e) => e.seq!));
+      await d.outbox.bulkDelete(group.flatMap(superseded));
       const missing = ids.filter((id) => !returned.some((r) => r.id === id));
       await applyRemote(table, returned);
       // Rows the server kept its own newer copy of come back empty; fetch that copy.
