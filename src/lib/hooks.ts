@@ -5,8 +5,9 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 import { db } from "@/lib/db";
 import { getServerStatus, getStatus, subscribeStatus } from "@/lib/sync";
 import { runningLow, type Suggestion } from "@/lib/runningLow";
+import { learnedAisleOrder } from "@/lib/storeOrder";
 import { isActive } from "@/lib/trips";
-import type { AisleRow, ListItemRow, ListRow, ProductRow, ProfileRow, ShoppingSessionRow } from "@/lib/types";
+import type { AisleRow, ListItemRow, ListRow, ProductRow, ProfileRow, ShoppingSessionRow, Store } from "@/lib/types";
 
 export function useSyncStatus() {
   return useSyncExternalStore(subscribeStatus, getStatus, getServerStatus);
@@ -125,4 +126,29 @@ export function useRunningLow(listId: string | null): Suggestion[] | undefined {
     ]);
     return runningLow({ products, purchases, items, listId });
   }, [listId, minute]);
+}
+
+// The aisles in the order this store is usually walked, once a couple of trips there have
+// shown it; null until then (or with no store), meaning the household's usual order.
+export function useStoreAisleOrder(store: Store | null | undefined, aisles: AisleRow[]): AisleRow[] | null {
+  return (
+    useLiveQuery(async () => {
+      if (!store) return null;
+      const [sessions, purchases, items, products] = await Promise.all([
+        db().shopping_sessions.toArray(),
+        db().purchases.toArray(),
+        db().list_items.toArray(),
+        db().products.toArray(),
+      ]);
+      return learnedAisleOrder({
+        store,
+        aisles,
+        // Past trips only, so the list doesn't reshuffle under someone halfway round the shop.
+        sessions: sessions.filter((s) => !isActive(s)),
+        purchases,
+        items: new Map(items.map((i) => [i.id, i])),
+        products: new Map(products.map((p) => [p.id, p])),
+      });
+    }, [store, aisles]) ?? null
+  );
 }

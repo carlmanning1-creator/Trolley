@@ -77,6 +77,8 @@ export type ListItemRow = Stamps & {
   deleted_at: string | null;
 };
 
+export type Store = "coles" | "woolworths" | "aldi" | "other";
+
 export type ShoppingSessionRow = Stamps & {
   id: string;
   household_id: string;
@@ -84,6 +86,7 @@ export type ShoppingSessionRow = Stamps & {
   started_by: string | null;
   started_at: string;
   ended_at: string | null;
+  store?: Store | null;
 };
 
 // One ticked-off item: the history Running low learns from.

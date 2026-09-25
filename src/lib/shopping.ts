@@ -5,9 +5,9 @@ import { db, setMeta } from "@/lib/db";
 import { newId, nowIso, type Actor } from "@/lib/mutations";
 import { patchLocal, saveLocal } from "@/lib/sync";
 import { SESSION_MAX_MS } from "@/lib/trips";
-import type { ShoppingSessionRow } from "@/lib/types";
+import type { ShoppingSessionRow, Store } from "@/lib/types";
 
-export async function startShopping(actor: Actor, listId: string): Promise<ShoppingSessionRow> {
+export async function startShopping(actor: Actor, listId: string, store: Store): Promise<ShoppingSessionRow> {
   const t = nowIso();
   const session: ShoppingSessionRow = {
     id: newId(),
@@ -16,6 +16,7 @@ export async function startShopping(actor: Actor, listId: string): Promise<Shopp
     started_by: actor.userId,
     started_at: t,
     ended_at: null,
+    store,
     created_at: t,
     updated_at: t,
   };

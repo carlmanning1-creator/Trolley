@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import { ItemRow } from "@/components/ItemRow";
 import { findDuplicates } from "@/lib/duplicates";
 import { groupItems } from "@/lib/grouping";
-import { clearTicked, setChecked, type Actor } from "@/lib/mutations";
+import { clearTicked, restoreItems, setChecked, type Actor } from "@/lib/mutations";
+import { notify } from "@/lib/notices";
 import type { AisleRow, ListItemRow, ListRow, ProductRow, ProfileRow } from "@/lib/types";
 
 export function ListView({
@@ -16,6 +17,7 @@ export function ListView({
   profiles,
   highlightIds,
   large = false,
+  shopping = false,
   columns = 1,
   onEdit,
   onDuplicates,
@@ -28,6 +30,7 @@ export function ListView({
   profiles: Map<string, ProfileRow>;
   highlightIds?: Set<string>;
   large?: boolean;
+  shopping?: boolean; // bigger ticks while at the shops
   columns?: 1 | 2 | 3;
   onEdit: (item: ListItemRow) => void;
   onDuplicates?: (ids: string[]) => void;
@@ -50,6 +53,7 @@ export function ListView({
       addedBy={item.added_by ? profiles.get(item.added_by) : undefined}
       highlight={highlightIds?.has(item.id)}
       large={large}
+      shopping={shopping}
       duplicate={duplicates.has(item.id)}
       onToggle={() => void setChecked(actor, item, !item.checked)}
       onEdit={() => onEdit(item)}
@@ -95,7 +99,12 @@ export function ListView({
             </button>
             <button
               type="button"
-              onClick={() => void clearTicked(list.id)}
+              onClick={async () => {
+                const ids = await clearTicked(list.id);
+                if (ids.length) {
+                  notify(`Cleared ${ids.length} item${ids.length === 1 ? "" : "s"}`, { label: "Undo", run: () => restoreItems(ids) });
+                }
+              }}
               className="min-h-11 rounded-xl px-3 font-medium text-brand-strong hover:bg-surface"
             >
               Clear ticked items

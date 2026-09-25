@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { App } from "@/components/App";
 import { AuthProvider } from "@/components/AuthProvider";
-import { KioskWakeLock } from "@/components/KioskWakeLock";
+import { WakeLock } from "@/components/WakeLock";
 
 export const metadata: Metadata = { title: "Kitchen list" };
 
@@ -9,7 +9,7 @@ export const metadata: Metadata = { title: "Kitchen list" };
 export default function KioskPage() {
   return (
     <AuthProvider>
-      <KioskWakeLock />
+      <WakeLock />
       <App mode="kiosk" />
     </AuthProvider>
   );

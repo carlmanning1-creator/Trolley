@@ -49,7 +49,8 @@ test("start shopping shows a banner for everyone, highlights new items, and fini
   await waitSynced(pa);
 
   await pa.getByRole("button", { name: "Start shopping" }).click();
-  await expect(pa.getByText("You're shopping")).toBeVisible();
+  await pa.getByRole("button", { name: "Coles" }).click();
+  await expect(pa.getByTestId("trip-progress")).toHaveText("1 of 1 left");
   await waitSynced(pa);
 
   await refocus(pb);

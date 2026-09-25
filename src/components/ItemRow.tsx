@@ -16,6 +16,7 @@ export function ItemRow({
   addedBy,
   highlight,
   large,
+  shopping,
   duplicate,
   onToggle,
   onEdit,
@@ -27,6 +28,7 @@ export function ItemRow({
   addedBy: ProfileRow | undefined;
   highlight?: boolean;
   large?: boolean;
+  shopping?: boolean;
   duplicate?: boolean;
   onToggle: () => void;
   onEdit: () => void;
@@ -133,7 +135,7 @@ export function ItemRow({
           <span
             aria-hidden
             className={`flex shrink-0 items-center justify-center rounded-full border-2 ${
-              large ? "h-10 w-10 text-xl" : "h-7 w-7 text-sm"
+              large ? "h-10 w-10 text-xl" : shopping ? "h-9 w-9 text-lg" : "h-7 w-7 text-sm"
             } ${item.checked ? "border-brand bg-brand text-brand-contrast" : "border-border"}`}
           >
             {item.checked ? "✓" : ""}

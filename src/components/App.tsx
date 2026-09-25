@@ -16,6 +16,7 @@ import { ScanSheet } from "@/components/ScanSheet";
 import { ShoppingBar } from "@/components/ShoppingBar";
 import { StaplesSheet } from "@/components/StaplesSheet";
 import { StatusPill } from "@/components/StatusPill";
+import { WakeLock } from "@/components/WakeLock";
 import { APP_NAME } from "@/lib/config";
 import { openDb } from "@/lib/db";
 import {
@@ -27,6 +28,7 @@ import {
   useProducts,
   useProfiles,
   useRunningLow,
+  useStoreAisleOrder,
   useSyncStatus,
 } from "@/lib/hooks";
 import { processPendingReceipts } from "@/lib/receipts";
@@ -34,6 +36,7 @@ import { noticeItemAdded, sendPendingNotices } from "@/lib/shopping";
 import { autoSortProduct, sweepUnsorted } from "@/lib/autosort";
 import { findPicture, flushUploads, sweepPictures } from "@/lib/images";
 import { updateProduct, type Actor, type AddResult } from "@/lib/mutations";
+import { dismissNotice, notify, useNotice } from "@/lib/notices";
 import { startSync, stopSync } from "@/lib/sync";
 import type { AisleRow, ListItemRow, ProductRow } from "@/lib/types";
 
@@ -72,14 +75,14 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
   );
   const { ready } = useSyncStatus();
   const lists = useLists();
-  const aisles = useAisles() ?? [];
+  const loadedAisles = useAisles();
+  const aisles = useMemo(() => loadedAisles ?? [], [loadedAisles]);
   const profiles = useProfiles();
   const products = useProducts();
   const [chosenList, setChosenList] = useState<string | null>(readActiveList);
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [editing, setEditing] = useState<ListItemRow | null>(null);
   const [dupIds, setDupIds] = useState<string[] | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
   const kiosk = mode === "kiosk";
 
   const activeList = useMemo(() => {
@@ -95,6 +98,13 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
   const dueCount = suggestions.filter((s) => !s.onList).length;
   const pending = usePendingCount();
   const mySession = sessions.find((s) => s.started_by === actor.userId);
+  // Whoever is at the shop (the shopper, or someone walking round with them) sees the list in
+  // the order that store is usually walked, once the app has learned it.
+  const tripStore = mySession?.store ?? sessions.find((s) => s.store)?.store ?? null;
+  const storeAisles = useStoreAisleOrder(tripStore, aisles);
+  // Which trip the add box was opened on, so it starts folded again on the next trip.
+  const [addOpenOn, setAddOpenOn] = useState<string | null>(null);
+  const addOpen = Boolean(mySession) && addOpenOn === mySession?.id;
   // While I'm shopping, things other people add after I started get highlighted.
   // (Compared as times, not text: the server and the phone write timestamps differently.)
   const highlightIds = useMemo(() => {
@@ -122,11 +132,6 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
     }
   }, []);
 
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 2500);
-    return () => clearTimeout(t);
-  }, [toast]);
 
   // Sort anything still unsorted once the device has caught up, and again when signal returns.
   useEffect(() => {
@@ -159,8 +164,8 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
     if (r.status !== "already" && sessions.some((s) => s.started_by !== actor.userId)) {
       void noticeItemAdded(r.item.id);
     }
-    if (r.status === "already") setToast(`${r.item.name} is already on the list`);
-    else if (r.status === "restored") setToast(`${r.item.name} is back on the list`);
+    if (r.status === "already") notify(`${r.item.name} is already on the list`);
+    else if (r.status === "restored") notify(`${r.item.name} is back on the list`);
   }
 
   // Keep the editor showing the latest version of the item if it changes elsewhere.
@@ -228,7 +233,18 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
             </button>
           </div>
         ) : (
-          <AddBar actor={actor} listId={activeList.id} onAdded={onAdded} />
+          // While shopping the list matters more than the add box, so it folds away.
+          mySession && !addOpen ? (
+            <button
+              type="button"
+              onClick={() => setAddOpenOn(mySession.id)}
+              className="min-h-11 rounded-2xl border border-border px-4 text-left font-medium text-muted"
+            >
+              + Add something
+            </button>
+          ) : (
+            <AddBar actor={actor} listId={activeList.id} onAdded={onAdded} />
+          )
         )}
         <ShoppingBar
           actor={actor}
@@ -238,6 +254,7 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
           items={items}
           large={kiosk}
           controls={!kiosk}
+          storeOrderLearned={Boolean(storeAisles)}
           onScanReceipt={() => setOverlay("receipts")}
         />
       </header>
@@ -262,7 +279,8 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
           actor={actor}
           list={activeList}
           items={items}
-          aisles={aisles}
+          aisles={storeAisles ?? aisles}
+          shopping={Boolean(mySession)}
           products={products}
           profiles={profiles}
           large={kiosk}
@@ -303,14 +321,8 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
         </nav>
       )}
 
-      {toast && (
-        <div
-          role="status"
-          className="fixed inset-x-4 bottom-24 z-40 mx-auto max-w-md rounded-2xl bg-foreground px-4 py-3 text-center text-background shadow-xl"
-        >
-          {toast}
-        </div>
-      )}
+      <NoticeBar />
+      {mySession && <WakeLock />}
 
       <DuplicateSheet
         group={dupIds ? items.filter((i) => dupIds.includes(i.id) && !i.deleted_at && !i.checked) : null}
@@ -375,7 +387,7 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
         profiles={profiles}
         onPick={chooseList}
         onManage={() => setOverlay("settings")}
-        onToast={setToast}
+        onToast={notify}
       />
 
       <Settings
@@ -422,5 +434,32 @@ function ItemExtras({ product, aisle }: { product: ProductRow; aisle: AisleRow |
         </span>
       </label>
     </>
+  );
+}
+
+// The message at the bottom of the screen, with its Undo (or other) button when it has one.
+function NoticeBar() {
+  const notice = useNotice();
+  if (!notice) return null;
+  return (
+    <div
+      role="status"
+      className="fixed inset-x-4 bottom-24 z-40 mx-auto flex max-w-md items-center gap-3 rounded-2xl bg-foreground px-4 py-2 text-background shadow-xl"
+    >
+      <span className="min-h-8 flex-1 py-1.5">{notice.text}</span>
+      {notice.action && (
+        <button
+          type="button"
+          onClick={() => {
+            const { run } = notice.action!;
+            dismissNotice();
+            void run();
+          }}
+          className="min-h-11 rounded-xl px-3 font-bold underline"
+        >
+          {notice.action.label}
+        </button>
+      )}
+    </div>
   );
 }

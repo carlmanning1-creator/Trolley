@@ -5,7 +5,8 @@ import { Sheet } from "@/components/Sheet";
 import { autoSortProduct } from "@/lib/autosort";
 import { db } from "@/lib/db";
 import { findPicture } from "@/lib/images";
-import { deleteItem, updateItem, type Actor } from "@/lib/mutations";
+import { deleteItem, restoreItems, updateItem, type Actor } from "@/lib/mutations";
+import { notify } from "@/lib/notices";
 import type { AisleRow, ListItemRow } from "@/lib/types";
 
 const UNIT_OPTIONS = ["", "kg", "g", "L", "mL", "pack", "dozen", "bunch", "can", "bottle", "bag", "box", "jar", "loaf"];
@@ -92,6 +93,7 @@ function ItemForm({
   async function remove() {
     await deleteItem(item);
     onClose();
+    notify(`Deleted ${item.name}`, { label: "Undo", run: () => restoreItems([item.id]) });
   }
 
   const field = "min-h-12 w-full rounded-xl border border-border bg-background px-3 text-lg";

@@ -2,8 +2,9 @@
 
 import { useEffect } from "react";
 
-// Keeps the kitchen screen awake. Fully Kiosk has its own setting too; this covers other browsers.
-export function KioskWakeLock() {
+// Keeps the screen awake: always on the kitchen screen (Fully Kiosk has its own setting too),
+// and on the shopper's phone during a trip.
+export function WakeLock() {
   useEffect(() => {
     let lock: WakeLockSentinel | null = null;
     let stopped = false;

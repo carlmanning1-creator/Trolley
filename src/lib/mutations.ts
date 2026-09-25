@@ -250,20 +250,31 @@ export async function deleteItem(item: ListItemRow): Promise<void> {
   await patchLocal<ListItemRow>("list_items", item.id, { deleted_at: t, updated_at: t });
 }
 
-export async function clearTicked(listId: string): Promise<number> {
+// Returns the ids it cleared, so the caller can offer Undo.
+export async function clearTicked(listId: string): Promise<string[]> {
   const t = nowIso();
   const ticked = await db()
     .list_items.where("list_id")
     .equals(listId)
     .filter((i) => !i.deleted_at && i.checked)
     .toArray();
+  const cleared: string[] = [];
   for (const i of ticked) {
     // Re-check at write time: someone may have unticked it a moment ago.
-    await patchLocal<ListItemRow>("list_items", i.id, (cur) =>
+    const next = await patchLocal<ListItemRow>("list_items", i.id, (cur) =>
       cur.checked && !cur.deleted_at ? { deleted_at: t, updated_at: t } : null,
     );
+    if (next?.deleted_at === t) cleared.push(i.id);
   }
-  return ticked.length;
+  return cleared;
+}
+
+// Undo for a delete or a clear: brings the items back as they were.
+export async function restoreItems(ids: string[]): Promise<void> {
+  const t = nowIso();
+  for (const id of ids) {
+    await patchLocal<ListItemRow>("list_items", id, (cur) => (cur.deleted_at ? { deleted_at: null, updated_at: t } : null));
+  }
 }
 
 // ---------------------------------------------------------------------------

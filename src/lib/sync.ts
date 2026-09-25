@@ -170,6 +170,7 @@ export function isRejection(error: { status?: number } | null): boolean {
 const COLUMN_DEFAULTS: Partial<Record<SyncedTable, Record<string, unknown>>> = {
   list_items: { link: null, distinct_from: [] },
   products: { image_source_url: null, rejected_sources: [], hide_running_low: false },
+  shopping_sessions: { store: null },
 };
 
 // Columns only the server writes are left out.
