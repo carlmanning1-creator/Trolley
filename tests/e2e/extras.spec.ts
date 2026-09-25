@@ -73,6 +73,7 @@ test("adding then renaming with no signal syncs cleanly afterwards", async ({ pa
 test("an item can carry a link that opens from the list", async ({ page }) => {
   await signInThroughUi(page, person);
   await page.getByRole("button", { name: "Edit Garden hose" }).click();
+  await page.getByText("More: link, aisle, picture, staple").click();
   await page.getByLabel("Link").fill("not a link");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("doesn't look like a web address")).toBeVisible();

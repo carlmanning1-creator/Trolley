@@ -147,3 +147,37 @@ test("deleting an item can be undone", async ({ page }) => {
   const { data } = await admin.from("list_items").select("deleted_at").eq("household_id", house.id).eq("name", "Custard").single();
   expect(data?.deleted_at).toBeNull();
 });
+
+async function swipe(page: Page, name: string, dx: number) {
+  const box = (await item(page, name).getByRole("checkbox").boundingBox())!;
+  const y = box.y + box.height / 2;
+  const x = box.x + box.width / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + dx / 2, y, { steps: 5 });
+  await page.mouse.move(x + dx, y, { steps: 5 });
+  await page.mouse.up();
+}
+
+test("swipe right ticks, swipe left deletes with Undo, and your own items carry no initial", async ({ page }) => {
+  await signInThroughUi(page, person);
+  await add(page, "Apples");
+  await add(page, "Honey");
+  await expect(item(page, "Apples")).toBeVisible();
+  await expect(item(page, "Apples").getByLabel(/Added by/)).toHaveCount(0);
+
+  await swipe(page, "Apples", 140);
+  await expect(item(page, "Apples")).toHaveCount(0); // gone into the folded "In the trolley"
+  await page.getByRole("button", { name: /In the trolley/ }).click();
+  await expect(item(page, "Apples")).toHaveAttribute("data-checked", "true");
+
+  await swipe(page, "Honey", -140);
+  await expect(item(page, "Honey")).toHaveCount(0);
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(item(page, "Honey")).toBeVisible();
+
+  // A short drag does nothing.
+  await swipe(page, "Honey", 30);
+  await expect(item(page, "Honey")).toHaveAttribute("data-checked", "false");
+  await synced(page);
+});

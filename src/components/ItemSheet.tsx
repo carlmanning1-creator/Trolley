@@ -11,6 +11,14 @@ import type { AisleRow, ListItemRow } from "@/lib/types";
 
 const UNIT_OPTIONS = ["", "kg", "g", "L", "mL", "pack", "dozen", "bunch", "can", "bottle", "bag", "box", "jar", "loaf"];
 
+// The quantity after tapping − or +: whole steps, never below one, empty means "not set".
+function step(value: string, by: 1 | -1): string {
+  const n = Number(value.replace(",", "."));
+  if (value.trim() === "" || !Number.isFinite(n)) return by > 0 ? "2" : "";
+  const next = Math.floor(n) + by;
+  return next < 1 ? "" : String(next);
+}
+
 export function ItemSheet({
   actor,
   item,
@@ -51,6 +59,8 @@ function ItemForm({
   const [link, setLink] = useState(item.link ?? "");
   const [linkError, setLinkError] = useState<string | null>(null);
   const [aisleId, setAisleId] = useState(item.aisle_id ?? "");
+  // The less-used fields start folded, unless this item already uses one of them.
+  const [more, setMore] = useState(Boolean(item.link));
 
   async function save(e: FormEvent) {
     e.preventDefault();
@@ -64,6 +74,7 @@ function ItemForm({
         cleanLink = u.toString();
       } catch {
         setLinkError("That doesn't look like a web address.");
+        setMore(true);
         return;
       }
     }
@@ -105,27 +116,42 @@ function ItemForm({
         </label>
         <input id="item-name" value={name} onChange={(e) => setName(e.target.value)} className={field} />
       </div>
-      <div className="flex gap-3">
-        <div className="flex-1">
-          <label htmlFor="item-qty" className="mb-1 block font-medium">
-            Quantity
-          </label>
+      <div>
+        <label htmlFor="item-qty" className="mb-1 block font-medium">
+          Quantity
+        </label>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            aria-label="One less"
+            onClick={() => setQuantity(step(quantity, -1))}
+            className="min-h-12 min-w-12 rounded-xl border border-border text-2xl"
+          >
+            −
+          </button>
           <input
             id="item-qty"
             inputMode="decimal"
             value={quantity}
+            placeholder="–"
             onChange={(e) => setQuantity(e.target.value)}
-            className={field}
+            className={`${field} w-20 text-center`}
           />
-        </div>
-        <div className="flex-1">
-          <label htmlFor="item-unit" className="mb-1 block font-medium">
+          <button
+            type="button"
+            aria-label="One more"
+            onClick={() => setQuantity(step(quantity, 1))}
+            className="min-h-12 min-w-12 rounded-xl border border-border text-2xl"
+          >
+            +
+          </button>
+          <label htmlFor="item-unit" className="sr-only">
             Unit
           </label>
-          <select id="item-unit" value={unit} onChange={(e) => setUnit(e.target.value)} className={field}>
+          <select id="item-unit" value={unit} onChange={(e) => setUnit(e.target.value)} className={`${field} min-w-0 flex-1`}>
             {UNIT_OPTIONS.map((u) => (
               <option key={u} value={u}>
-                {u || "none"}
+                {u || "no unit"}
               </option>
             ))}
             {unit && !UNIT_OPTIONS.includes(unit) && <option value={unit}>{unit}</option>}
@@ -144,46 +170,6 @@ function ItemForm({
           className={field}
         />
       </div>
-      <div>
-        <label htmlFor="item-link" className="mb-1 block font-medium">
-          Link
-        </label>
-        <input
-          id="item-link"
-          type="text"
-          inputMode="url"
-          autoComplete="off"
-          autoCapitalize="none"
-          placeholder="e.g. a product page"
-          value={link}
-          onChange={(e) => {
-            setLink(e.target.value);
-            setLinkError(null);
-          }}
-          aria-invalid={Boolean(linkError)}
-          aria-describedby={linkError ? "item-link-error" : undefined}
-          className={field}
-        />
-        {linkError && (
-          <p id="item-link-error" role="alert" className="mt-1 text-sm text-danger">
-            {linkError}
-          </p>
-        )}
-      </div>
-      <div>
-        <label htmlFor="item-aisle" className="mb-1 block font-medium">
-          Aisle
-        </label>
-        <select id="item-aisle" value={aisleId} onChange={(e) => setAisleId(e.target.value)} className={field}>
-          <option value="">Not sorted</option>
-          {aisles.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.icon} {a.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      {extra}
       <div className="flex gap-3 pt-2">
         <button
           type="button"
@@ -196,6 +182,55 @@ function ItemForm({
           Save
         </button>
       </div>
+      <details
+        open={more}
+        onToggle={(e) => setMore((e.currentTarget as HTMLDetailsElement).open)}
+        className="rounded-xl border border-border px-3"
+      >
+        <summary className="flex min-h-12 cursor-pointer items-center font-medium">More: link, aisle, picture, staple</summary>
+        <div className="flex flex-col gap-4 pb-3">
+        <div>
+          <label htmlFor="item-link" className="mb-1 block font-medium">
+            Link
+          </label>
+          <input
+            id="item-link"
+            type="text"
+            inputMode="url"
+            autoComplete="off"
+            autoCapitalize="none"
+            placeholder="e.g. a product page"
+            value={link}
+            onChange={(e) => {
+              setLink(e.target.value);
+              setLinkError(null);
+            }}
+            aria-invalid={Boolean(linkError)}
+            aria-describedby={linkError ? "item-link-error" : undefined}
+            className={field}
+          />
+          {linkError && (
+            <p id="item-link-error" role="alert" className="mt-1 text-sm text-danger">
+              {linkError}
+            </p>
+          )}
+        </div>
+        <div>
+          <label htmlFor="item-aisle" className="mb-1 block font-medium">
+            Aisle
+          </label>
+          <select id="item-aisle" value={aisleId} onChange={(e) => setAisleId(e.target.value)} className={field}>
+            <option value="">Not sorted</option>
+            {aisles.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.icon} {a.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        {extra}
+        </div>
+      </details>
     </form>
   );
 }

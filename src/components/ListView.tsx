@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { ItemRow } from "@/components/ItemRow";
 import { findDuplicates } from "@/lib/duplicates";
 import { groupItems } from "@/lib/grouping";
-import { clearTicked, restoreItems, setChecked, type Actor } from "@/lib/mutations";
+import { clearTicked, deleteItem, restoreItems, setChecked, type Actor } from "@/lib/mutations";
 import { notify } from "@/lib/notices";
 import type { AisleRow, ListItemRow, ListRow, ProductRow, ProfileRow } from "@/lib/types";
 
@@ -50,13 +50,17 @@ export function ListView({
       item={item}
       product={item.product_id ? products.get(item.product_id) : undefined}
       aisle={item.aisle_id ? aisleById.get(item.aisle_id) : undefined}
-      addedBy={item.added_by ? profiles.get(item.added_by) : undefined}
+      addedBy={item.added_by && item.added_by !== actor.userId ? profiles.get(item.added_by) : undefined}
       highlight={highlightIds?.has(item.id)}
       large={large}
       shopping={shopping}
       duplicate={duplicates.has(item.id)}
       onToggle={() => void setChecked(actor, item, !item.checked)}
       onEdit={() => onEdit(item)}
+      onDelete={async () => {
+        await deleteItem(item);
+        notify(`Deleted ${item.name}`, { label: "Undo", run: () => restoreItems([item.id]) });
+      }}
       onDuplicate={onDuplicates ? () => onDuplicates(duplicates.get(item.id) ?? []) : undefined}
     />
   );

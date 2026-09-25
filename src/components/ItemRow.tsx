@@ -6,9 +6,10 @@ import { formatQuantity } from "@/lib/parse";
 import type { AisleRow, ListItemRow, ProductRow, ProfileRow } from "@/lib/types";
 
 const LONG_PRESS_MS = 500;
-const SWIPE_PX = 70;
+const SWIPE_PX = 80;
 
-// One line on the list. Tap to tick. Long-press, swipe sideways or the ⋯ button to edit.
+// One line on the list. Tap or swipe right to tick, swipe left to delete (with Undo),
+// long-press or the ⋯ button to edit.
 export function ItemRow({
   item,
   product,
@@ -20,18 +21,20 @@ export function ItemRow({
   duplicate,
   onToggle,
   onEdit,
+  onDelete,
   onDuplicate,
 }: {
   item: ListItemRow;
   product: ProductRow | undefined;
   aisle: AisleRow | undefined;
-  addedBy: ProfileRow | undefined;
+  addedBy: ProfileRow | undefined; // shown only for other people's items
   highlight?: boolean;
   large?: boolean;
   shopping?: boolean;
   duplicate?: boolean;
   onToggle: () => void;
   onEdit: () => void;
+  onDelete: () => void;
   onDuplicate?: () => void;
 }) {
   const [dx, setDx] = useState(0);
@@ -73,13 +76,12 @@ export function ItemRow({
     press.current = null;
     if (!p) return;
     if (p.timer) clearTimeout(p.timer);
-    if (Math.abs(dx) >= SWIPE_PX) {
-      setDx(0);
-      suppressClick.current = true;
-      onEdit();
-      return;
-    }
     setDx(0);
+    if (Math.abs(dx) >= SWIPE_PX) {
+      suppressClick.current = true;
+      if (dx > 0) onToggle();
+      else onDelete();
+    }
   }
 
   function cancel() {
@@ -108,9 +110,13 @@ export function ItemRow({
       data-name={item.name}
       data-checked={item.checked}
     >
-      <div aria-hidden className="absolute inset-0 flex items-center justify-between bg-surface-2 px-5 text-muted">
-        <span>Edit</span>
-        <span>Edit</span>
+      <div
+        aria-hidden
+        className={`absolute inset-0 flex items-center px-5 font-semibold ${
+          dx > 0 ? "justify-start bg-brand text-brand-contrast" : dx < 0 ? "justify-end bg-danger text-white" : ""
+        }`}
+      >
+        {dx > 0 ? (item.checked ? "↩ Untick" : "✓ Tick") : dx < 0 ? "Delete" : null}
       </div>
       <div
         className="relative flex items-center gap-2 bg-surface"
@@ -128,8 +134,8 @@ export function ItemRow({
           onPointerLeave={() => press.current && !press.current.fired && up()}
           onContextMenu={(e) => e.preventDefault()}
           onClick={click}
-          className={`flex min-w-0 flex-1 touch-pan-y items-center gap-3 p-2 text-left select-none ${
-            large ? "min-h-20" : "min-h-16"
+          className={`flex min-w-0 flex-1 touch-pan-y items-center gap-3 px-2 py-1.5 text-left select-none ${
+            large ? "min-h-20" : "min-h-14"
           }`}
         >
           <span
@@ -140,7 +146,7 @@ export function ItemRow({
           >
             {item.checked ? "✓" : ""}
           </span>
-          <ProductThumb product={product} aisle={aisle} size={large ? 64 : 48} />
+          <ProductThumb product={product} aisle={aisle} size={large ? 64 : 40} />
           <span className="min-w-0 flex-1">
             <span
               className={`block line-clamp-2 break-words font-medium ${large ? "text-3xl" : "text-lg"} ${

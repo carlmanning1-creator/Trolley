@@ -12,7 +12,10 @@ The full build brief and every decision behind it is in `CLAUDE.md`.
 - Product pictures found automatically: Open Food Facts, then Wikimedia Commons, then a Claude web search (capped at 300 a month), or your own photos. Renaming an item looks again.
 - A link on any item, and export of a list as shared text, a spreadsheet or a printout
 - Barcode scanning with the phone camera
-- Shopping mode with notifications to the rest of the household
+- Running low: suggests what's probably due, learned from what gets ticked off
+- Shopping mode: pick the store and the list learns its aisle order; progress, big ticks, notifications to the rest of the household
+- Swipe right to tick, left to delete, with Undo
+- Report a problem from Settings, with an on-device error log
 - Receipt scanning that ticks off what you bought
 - A full-screen kitchen display at `/kiosk`
 

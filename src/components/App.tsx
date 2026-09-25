@@ -192,32 +192,40 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
 
   return (
     <div className={`mx-auto flex min-h-dvh flex-col ${kiosk ? "max-w-none" : "max-w-3xl lg:max-w-6xl"}`}>
-      <header className="sticky top-0 z-20 flex flex-col gap-3 bg-background/95 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 backdrop-blur">
-        <div className="flex items-center justify-between gap-3">
-          <h1 className={`flex items-center gap-2 font-bold ${kiosk ? "text-4xl" : "text-2xl"}`}>
-            <span aria-hidden>{activeList.icon}</span>
-            {kiosk ? activeList.name : APP_NAME}
-            <span className="sr-only">, {openCount} items to get</span>
-          </h1>
-          <StatusPill />
-        </div>
-        {!kiosk && (
-          <nav aria-label="Lists" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
-            {lists.map((l) => (
-              <button
-                key={l.id}
-                type="button"
-                aria-current={l.id === activeList.id ? "page" : undefined}
-                onClick={() => chooseList(l.id)}
-                className={`flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-4 font-medium ${
-                  l.id === activeList.id ? "bg-brand text-brand-contrast" : "bg-surface-2"
-                }`}
-              >
-                <span aria-hidden>{l.icon}</span>
-                {l.name}
-              </button>
-            ))}
-          </nav>
+      <header className="sticky top-0 z-20 flex flex-col gap-2.5 bg-background/95 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-2.5 backdrop-blur">
+        {kiosk ? (
+          <div className="flex items-center justify-between gap-3">
+            <h1 className="flex items-center gap-2 text-4xl font-bold">
+              <span aria-hidden>{activeList.icon}</span>
+              {activeList.name}
+              <span className="sr-only">, {openCount} items to get</span>
+            </h1>
+            <StatusPill />
+          </div>
+        ) : (
+          // On a phone the list tabs are the heading: no title row, more room for the list.
+          <div className="flex items-center gap-2">
+            <h1 className="sr-only">
+              {APP_NAME}: {activeList.name}, {openCount} items to get
+            </h1>
+            <nav aria-label="Lists" className="-ml-4 flex min-w-0 flex-1 gap-2 overflow-x-auto py-0.5 pl-4">
+              {lists.map((l) => (
+                <button
+                  key={l.id}
+                  type="button"
+                  aria-current={l.id === activeList.id ? "page" : undefined}
+                  onClick={() => chooseList(l.id)}
+                  className={`flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-4 font-medium ${
+                    l.id === activeList.id ? "bg-brand text-brand-contrast" : "bg-surface-2"
+                  }`}
+                >
+                  <span aria-hidden>{l.icon}</span>
+                  {l.name}
+                </button>
+              ))}
+            </nav>
+            <StatusPill />
+          </div>
         )}
         {kiosk ? (
           <div className="flex items-start gap-3">

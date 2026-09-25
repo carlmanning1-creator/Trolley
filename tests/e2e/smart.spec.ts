@@ -124,6 +124,7 @@ test("the picture shows where it came from, and a wrong one is never used again"
 
   await signInThroughUi(page, person);
   await page.getByRole("button", { name: "Edit Qzxv blorp gadget" }).click();
+  await page.getByText("More: link, aisle, picture, staple").click();
   await expect(page.getByText("From example.com")).toBeVisible();
   await expect(page.getByRole("link", { name: "View source" })).toHaveAttribute("href", source);
 

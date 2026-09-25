@@ -41,6 +41,7 @@ test("staples: mark, one-tap add, greyed when on the list; recent shows bought i
   await signInThroughUi(page, person);
   await add(page, "Milk");
   await page.getByRole("button", { name: "Edit Milk" }).click();
+  await page.getByText("More: link, aisle, picture, staple").click();
   await page.getByLabel(/Staple/).click();
   await expect(page.getByLabel(/Staple/)).toBeChecked();
   await page.getByRole("button", { name: "Save" }).click();

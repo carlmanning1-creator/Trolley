@@ -94,6 +94,7 @@ test("an unknown barcode gets named once and is known next time", async ({ page 
 test("anyone can replace a picture with their own", async ({ page }) => {
   await signInThroughUi(page, person);
   await page.getByRole("button", { name: "Edit Mystery sauce" }).click();
+  await page.getByText("More: link, aisle, picture, staple").click();
   const photo = await sharp({ create: { width: 1600, height: 1200, channels: 3, background: "#d97706" } })
     .jpeg()
     .toBuffer();

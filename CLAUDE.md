@@ -267,6 +267,11 @@ Design the data model so these slot in later without migrations that break exist
 - Items have an optional `link`; lists export as shared text, CSV or print (Lists sheet).
 - Similar items on one list get a ⚠ flag with Merge or Keep both; Keep both is remembered in `list_items.distinct_from`. Picture search uses the item's note as well as its name, and a note change re-searches automatic pictures.
 - Sync sends rows parent tables first (the order of `SYNCED_TABLES`), so an item never reaches the server before its list, aisle or product.
+- Purchase history (Sept 2026): every tick writes a `purchases` row (an untick within a day takes it back; confirmed receipts add them too). **Running low** (bottom bar, replacing Receipts, which moved to Settings) learns each product's usual gap from it and suggests what's due; "Don't suggest" sets `products.hide_running_low`. Carl rarely uses quantities or receipts, so neither is built on.
+- Pictures record `image_source_url`; the editor shows the source and a **Wrong picture** button that adds it to `products.rejected_sources` and finds the next best.
+- **Report a problem** (Settings) sends a message, optional screenshot and diagnostics (including the on-device error log in `src/lib/errorLog.ts`, tokens scrubbed) to `problem_reports`; the admin is notified and reads them in Settings. Read them from here with the secret key when asked to fix something.
+- **Shopping mode**: Start shopping asks the store (`shopping_sessions.store`); after two proper past trips to a store the list follows its learned aisle order (`src/lib/storeOrder.ts`). Progress, bigger ticks, folded add box, wake lock. Undo for delete and clear.
+- Screens: no title row on phones (list tabs are the heading), compact rows, initials only on other people's items, swipe right to tick and left to delete, editor fields beyond name/quantity/note under "More".
 - In this cloud container, browser WebSockets are blocked and Open Food Facts images are slow; live push is proven by `tests/integration/realtime.test.ts` and picture tests are best judged against the live site.
 
 ---
