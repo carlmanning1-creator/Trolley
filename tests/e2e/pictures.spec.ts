@@ -121,3 +121,23 @@ test("typed items get a picture from Open Food Facts when one exists", async ({ 
   // Allow for Open Food Facts being slow: the background retry fills it in if the first try fails.
   await expect(item(page, "Weet-Bix").locator("img")).toBeVisible({ timeout: 75_000 });
 });
+
+test("phones with a built-in barcode reader use it", async ({ page }) => {
+  // Stand in for Android Chrome's reader: it "sees" a barcode on the third frame.
+  await page.addInitScript(() => {
+    let frames = 0;
+    class FakeDetector {
+      static async getSupportedFormats() {
+        return ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "qr_code"];
+      }
+      async detect() {
+        frames++;
+        return frames >= 3 ? [{ rawValue: "9300601000013" }] : [];
+      }
+    }
+    (window as unknown as { BarcodeDetector: unknown }).BarcodeDetector = FakeDetector;
+  });
+  await signInThroughUi(page, person);
+  await page.getByRole("button", { name: "Scan" }).click();
+  await expect(page.getByText("Barcode 9300601000013")).toBeVisible({ timeout: 20_000 });
+});

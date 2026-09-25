@@ -1,10 +1,10 @@
 "use client";
 
-import type { IScannerControls } from "@zxing/browser";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ProductThumb } from "@/components/ProductThumb";
 import { Sheet } from "@/components/Sheet";
 import { autoSortProduct } from "@/lib/autosort";
+import { nativeDetector, openCamera, rankRearCameras, type CameraControls } from "@/lib/camera";
 import { db } from "@/lib/db";
 import { findPicture, offLookupBarcode, type OffProduct } from "@/lib/images";
 import { aisleForName } from "@/lib/keywords";
@@ -85,8 +85,12 @@ async function resolve(barcode: string): Promise<Found> {
 
 function Scanner({ onRead }: { onRead: (code: string) => void }) {
   const video = useRef<HTMLVideoElement>(null);
+  const camera = useRef<CameraControls | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [manual, setManual] = useState("");
+  const [torch, setTorch] = useState<boolean | null>(null); // null: this camera has no light
+  const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
+  const [cameraId, setCameraId] = useState<string | undefined>(undefined);
   const done = useRef(false);
   const onReadRef = useRef(onRead);
   useEffect(() => {
@@ -94,37 +98,76 @@ function Scanner({ onRead }: { onRead: (code: string) => void }) {
   });
 
   useEffect(() => {
-    let controls: IScannerControls | null = null;
     let cancelled = false;
+    let stopDecoding: (() => void) | null = null;
+
+    const found = (code: string) => {
+      if (done.current || cancelled) return;
+      done.current = true;
+      navigator.vibrate?.(40);
+      stopDecoding?.();
+      camera.current?.stop();
+      onReadRef.current(code);
+    };
+
     (async () => {
       try {
-        const [{ BrowserMultiFormatReader }, { BarcodeFormat, DecodeHintType }] = await Promise.all([
-          import("@zxing/browser"),
-          import("@zxing/library"),
-        ]);
-        const hints = new Map();
-        hints.set(DecodeHintType.POSSIBLE_FORMATS, [
-          BarcodeFormat.EAN_13,
-          BarcodeFormat.EAN_8,
-          BarcodeFormat.UPC_A,
-          BarcodeFormat.UPC_E,
-          BarcodeFormat.CODE_128,
-        ]);
-        const reader = new BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: 150 });
-        if (cancelled || !video.current) return;
-        controls = await reader.decodeFromConstraints(
-          { video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
-          video.current,
-          (result) => {
-            if (result && !done.current) {
-              done.current = true;
-              navigator.vibrate?.(40);
-              controls?.stop();
-              onReadRef.current(result.getText());
+        const cam = await openCamera(cameraId);
+        if (cancelled) return cam.stop();
+        camera.current = cam;
+        setTorch(cam.canTorch ? false : null);
+
+        // Lens names only appear once the camera is allowed. If the phone picked a lens that
+        // can't focus close (ultra-wide), move to the main one straight away.
+        if (!cameraId) {
+          const rear = rankRearCameras(await navigator.mediaDevices.enumerateDevices());
+          setCameras(rear);
+          const current = cam.stream.getVideoTracks()[0].getSettings().deviceId;
+          if (rear.length > 1 && current && rear[0].deviceId && current !== rear[0].deviceId && /ultra|wide|0\.5/i.test(rear.find((d) => d.deviceId === current)?.label ?? "")) {
+            cam.stop();
+            setCameraId(rear[0].deviceId);
+            return;
+          }
+        }
+
+        const el = video.current;
+        if (!el) return;
+        const native = await nativeDetector();
+        if (native) {
+          el.srcObject = cam.stream;
+          await el.play().catch(() => undefined);
+          const timer = setInterval(async () => {
+            if (el.readyState < 2) return;
+            try {
+              const [hit] = await native.detect(el);
+              if (hit?.rawValue) found(hit.rawValue);
+            } catch {
+              // a frame that couldn't be read; try the next one
             }
-          },
-        );
-        if (cancelled) controls.stop();
+          }, 120);
+          stopDecoding = () => clearInterval(timer);
+        } else {
+          const [{ BrowserMultiFormatReader }, { BarcodeFormat, DecodeHintType }] = await Promise.all([
+            import("@zxing/browser"),
+            import("@zxing/library"),
+          ]);
+          const hints = new Map();
+          hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+            BarcodeFormat.EAN_13,
+            BarcodeFormat.EAN_8,
+            BarcodeFormat.UPC_A,
+            BarcodeFormat.UPC_E,
+            BarcodeFormat.CODE_128,
+          ]);
+          hints.set(DecodeHintType.TRY_HARDER, true);
+          const reader = new BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: 120 });
+          if (cancelled) return;
+          const controls = await reader.decodeFromStream(cam.stream, el, (result) => {
+            if (result) found(result.getText());
+          });
+          stopDecoding = () => controls.stop();
+          if (cancelled) controls.stop();
+        }
       } catch (err) {
         const name = err instanceof Error ? err.name : "";
         setError(
@@ -138,9 +181,19 @@ function Scanner({ onRead }: { onRead: (code: string) => void }) {
     })();
     return () => {
       cancelled = true;
-      controls?.stop();
+      stopDecoding?.();
+      camera.current?.stop();
+      camera.current = null;
     };
-  }, []);
+  }, [cameraId]);
+
+  function nextCamera() {
+    if (cameras.length < 2) return;
+    const current = camera.current?.stream.getVideoTracks()[0].getSettings().deviceId;
+    const i = cameras.findIndex((c) => c.deviceId === current);
+    setTorch(null);
+    setCameraId(cameras[(i + 1) % cameras.length].deviceId);
+  }
 
   function submitManual(e: FormEvent) {
     e.preventDefault();
@@ -154,17 +207,38 @@ function Scanner({ onRead }: { onRead: (code: string) => void }) {
   return (
     <div className="flex flex-col gap-4">
       {!error && (
-        <div className="relative overflow-hidden rounded-2xl bg-black">
+        <div className="relative mx-auto w-full max-w-md overflow-hidden rounded-2xl bg-black">
           <video
             ref={video}
-            className="aspect-[4/3] w-full object-cover"
+            className="aspect-square w-full object-cover"
             muted
             playsInline
             autoPlay
-            aria-label="Camera viewfinder"
+            aria-label="Camera viewfinder. Tap to focus."
+            onClick={() => void camera.current?.refocus()}
           />
           <div aria-hidden className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <div className="h-1/3 w-4/5 rounded-xl border-4 border-white/80 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]" />
+            <div className="aspect-[4/3] w-3/4 rounded-2xl border-4 border-white/85 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]" />
+          </div>
+          <div className="absolute inset-x-0 bottom-0 flex justify-center gap-2 p-3">
+            {torch !== null && (
+              <button
+                type="button"
+                aria-pressed={torch}
+                onClick={() => {
+                  void camera.current?.setTorch(!torch);
+                  setTorch(!torch);
+                }}
+                className="min-h-11 rounded-full bg-black/60 px-4 font-medium text-white"
+              >
+                {torch ? "🔦 Light off" : "🔦 Light on"}
+              </button>
+            )}
+            {cameras.length > 1 && (
+              <button type="button" onClick={nextCamera} className="min-h-11 rounded-full bg-black/60 px-4 font-medium text-white">
+                🔄 Switch lens
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -173,7 +247,9 @@ function Scanner({ onRead }: { onRead: (code: string) => void }) {
           {error}
         </p>
       ) : (
-        <p className="text-center text-muted">Line the barcode up inside the box.</p>
+        <p className="text-center text-muted">
+          Hold the barcode about a hand&apos;s width away, inside the box. Tap the picture to focus.
+        </p>
       )}
       <form onSubmit={submitManual} className="flex gap-2">
         <label htmlFor="manual-barcode" className="sr-only">
