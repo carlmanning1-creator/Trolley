@@ -53,6 +53,11 @@ export function useProducts(): Map<string, ProductRow> {
 }
 
 // Closes an overlay when the phone's back button is pressed, instead of leaving the app.
+// Each open overlay owns one history entry. When one closes by a button and another opens in
+// the same moment (Settings to Receipts), the new one takes over the entry rather than having
+// the old one's "go back" land on it and close it straight away.
+let pendingBack: ReturnType<typeof setTimeout> | null = null;
+
 export function useBackToClose(open: boolean, close: () => void) {
   const closeRef = useRef(close);
   useEffect(() => {
@@ -61,7 +66,13 @@ export function useBackToClose(open: boolean, close: () => void) {
   useEffect(() => {
     if (!open) return;
     const marker = Math.random();
-    history.pushState({ trolleyOverlay: marker }, "");
+    if (pendingBack) {
+      clearTimeout(pendingBack);
+      pendingBack = null;
+      history.replaceState({ trolleyOverlay: marker }, "");
+    } else {
+      history.pushState({ trolleyOverlay: marker }, "");
+    }
     let poppedByBack = false;
     const onPop = () => {
       poppedByBack = true;
@@ -70,13 +81,18 @@ export function useBackToClose(open: boolean, close: () => void) {
     window.addEventListener("popstate", onPop);
     return () => {
       window.removeEventListener("popstate", onPop);
-      // Closed with a button rather than the back key: remove the history entry we added.
-      if (!poppedByBack && history.state?.trolleyOverlay === marker) history.back();
+      // Closed with a button rather than the back key: remove the entry, unless another
+      // overlay claims it first.
+      if (!poppedByBack && history.state?.trolleyOverlay === marker) {
+        pendingBack = setTimeout(() => {
+          pendingBack = null;
+          history.back();
+        }, 0);
+      }
     };
   }, [open]);
 }
 
-// Shopping trips in progress on a list (re-checked each minute so forgotten trips expire).
 // The current minute, updating once a minute, for things that change with time alone.
 function useMinute(): number {
   const [minute, setMinute] = useState(() => Math.floor(Date.now() / 60_000));

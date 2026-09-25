@@ -134,3 +134,17 @@ test("the picture shows where it came from, and a wrong one is never used again"
   expect(data?.rejected_sources).toEqual([source]);
   expect(data?.image_source_url).not.toBe(source);
 });
+
+test("going from one sheet straight to another leaves the new one open, and Back still closes it", async ({ page }) => {
+  await signInThroughUi(page, person);
+  await page.getByRole("button", { name: "Lists" }).click();
+  await page.getByRole("button", { name: "Add, rename or reorder lists" }).click();
+  await page.waitForTimeout(500);
+  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await page.getByRole("button", { name: /Scan or review receipts/ }).click();
+  await page.waitForTimeout(500);
+  await expect(page.getByLabel("Upload a receipt photo")).toBeAttached();
+  await page.goBack();
+  await expect(page.getByLabel("Upload a receipt photo")).not.toBeAttached();
+  await expect(page.getByLabel("Add an item")).toBeVisible();
+});
