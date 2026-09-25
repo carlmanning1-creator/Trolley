@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { PeopleManager } from "@/components/PeopleManager";
+import { ReportProblem, ReportsInbox } from "@/components/ProblemReports";
 import { Sheet } from "@/components/Sheet";
 import { PERSON_COLOURS } from "@/lib/people";
 import { useAisles, useLists } from "@/lib/hooks";
@@ -91,6 +92,16 @@ export function Settings({
             🧾 Scan or review receipts
           </button>
         </Section>
+
+        <Section title="Report a problem">
+          <ReportProblem />
+        </Section>
+
+        {profile?.is_admin && (
+          <Section title="Problem reports">
+            <ReportsInbox />
+          </Section>
+        )}
 
         <Section title="Account">
           <button

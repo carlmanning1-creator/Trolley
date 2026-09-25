@@ -212,6 +212,19 @@ describe("row level security", () => {
     expect(ok.data).toHaveLength(1);
   });
 
+  it("problem reports can only be reached through the server", async () => {
+    const id = randomUUID();
+    await admin.from("problem_reports").insert({ id, household_id: MANNING, message: "RLS test report" }).throwOnError();
+    try {
+      const read = await insider.from("problem_reports").select("id");
+      expect(read.data ?? []).toEqual([]);
+      const write = await insider.from("problem_reports").insert({ household_id: MANNING, message: "sneaky" });
+      expect(write.error).not.toBeNull();
+    } finally {
+      await admin.from("problem_reports").delete().eq("id", id);
+    }
+  });
+
   it("an outsider cannot see or download Manning photos", async () => {
     const listed = await outsider.storage.from("product-images").list(MANNING);
     expect(listed.data ?? []).toEqual([]);
