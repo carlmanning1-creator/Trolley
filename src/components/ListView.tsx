@@ -3,34 +3,9 @@
 import { useMemo, useState } from "react";
 import { ItemRow } from "@/components/ItemRow";
 import { findDuplicates } from "@/lib/duplicates";
+import { groupItems } from "@/lib/grouping";
 import { clearTicked, setChecked, type Actor } from "@/lib/mutations";
 import type { AisleRow, ListItemRow, ListRow, ProductRow, ProfileRow } from "@/lib/types";
-
-type Group = { key: string; title: string; icon: string; items: ListItemRow[] };
-
-// Groups the unticked items by aisle, in the order you walk the shop.
-export function groupItems(items: ListItemRow[], aisles: AisleRow[], useAisles: boolean): Group[] {
-  const open = items.filter((i) => !i.checked);
-  if (!useAisles) {
-    return open.length
-      ? [{ key: "all", title: "", icon: "", items: [...open].sort((a, b) => a.created_at.localeCompare(b.created_at)) }]
-      : [];
-  }
-  const byAisle = new Map<string, ListItemRow[]>();
-  for (const i of open) {
-    const k = i.aisle_id && aisles.some((a) => a.id === i.aisle_id) ? i.aisle_id : "none";
-    byAisle.set(k, [...(byAisle.get(k) ?? []), i]);
-  }
-  const groups: Group[] = [];
-  for (const a of aisles) {
-    const list = byAisle.get(a.id);
-    if (list) groups.push({ key: a.id, title: a.name, icon: a.icon, items: list });
-  }
-  const unsorted = byAisle.get("none");
-  if (unsorted) groups.push({ key: "none", title: "Not sorted yet", icon: "📦", items: unsorted });
-  for (const g of groups) g.items.sort((x, y) => x.name.localeCompare(y.name));
-  return groups;
-}
 
 export function ListView({
   actor,

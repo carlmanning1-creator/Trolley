@@ -1,6 +1,6 @@
 "use client";
 
-import { groupItems } from "@/components/ListView";
+import { groupItems } from "@/lib/grouping";
 import { formatQuantity } from "@/lib/parse";
 import type { AisleRow, ListItemRow, ListRow, ProfileRow } from "@/lib/types";
 

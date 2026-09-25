@@ -50,6 +50,20 @@ export async function POST(req: Request) {
   const now = new Date().toISOString();
   const boughtAt = receipt.purchased_at ?? now;
 
+  // Claim the receipt before changing anything, so a double tap or a retry can't count the
+  // same shop twice. If a later step fails, it goes back to review for another try.
+  const { data: claimed } = await db
+    .from("receipts")
+    .update({ status: "confirmed", updated_at: now })
+    .eq("id", receiptId)
+    .eq("status", receipt.status)
+    .select("id");
+  if (!claimed?.length) return Response.json({ error: "Already confirmed." }, { status: 409 });
+  const giveBack = async (message: string) => {
+    await db.from("receipts").update({ status: receipt.status, updated_at: new Date().toISOString() }).eq("id", receiptId);
+    return Response.json({ error: message }, { status: 500 });
+  };
+
   if (itemIds.length) {
     const { error } = await db
       .from("list_items")
@@ -57,7 +71,7 @@ export async function POST(req: Request) {
       .eq("household_id", hh)
       .in("id", itemIds)
       .eq("checked", false);
-    if (error) return Response.json({ error: "Couldn't tick the items." }, { status: 500 });
+    if (error) return giveBack("Couldn't tick the items.");
   }
 
   await db.from("receipt_lines").delete().eq("receipt_id", receiptId);
@@ -76,7 +90,7 @@ export async function POST(req: Request) {
     );
     if (error) {
       console.error("receipt_lines insert failed", error);
-      return Response.json({ error: "Couldn't save the receipt lines." }, { status: 500 });
+      return giveBack("Couldn't save the receipt lines.");
     }
   }
 
@@ -98,6 +112,5 @@ export async function POST(req: Request) {
     );
   }
 
-  await db.from("receipts").update({ status: "confirmed", updated_at: now }).eq("id", receiptId);
   return Response.json({ ticked: itemIds.length, lines: lines.length });
 }

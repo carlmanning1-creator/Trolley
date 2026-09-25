@@ -5,7 +5,7 @@ import { callApi } from "@/lib/api";
 import { db, getMeta, setMeta } from "@/lib/db";
 import { resizeImage } from "@/lib/imageResize";
 import { normaliseName, nowIso, updateProduct } from "@/lib/mutations";
-import { patchLocal } from "@/lib/sync";
+import { isRejection, patchLocal } from "@/lib/sync";
 import { supabase } from "@/lib/supabase";
 import type { ImageSource, ProductRow } from "@/lib/types";
 
@@ -94,6 +94,7 @@ export async function setProductPhoto(
 }
 
 let uploading = false;
+const MAX_UPLOAD_ATTEMPTS = 5;
 
 // Sends queued photos. Called on start, when signal returns, and after each new photo.
 export async function flushUploads(): Promise<void> {
@@ -110,8 +111,17 @@ export async function flushUploads(): Promise<void> {
         .storage.from(up.bucket)
         .upload(up.path, local.blob, { contentType: up.content_type, upsert: true });
       if (error) {
-        console.warn("Picture upload will retry", error);
-        break;
+        // No signal or a server hiccup: stop and try the whole queue later. A refusal (the
+        // server said no) is retried a few times, then dropped so it can't block other photos.
+        if (!isRejection(error as { status?: number })) {
+          console.warn("Picture upload will retry", error);
+          break;
+        }
+        const attempts = (up.attempts ?? 0) + 1;
+        if (attempts >= MAX_UPLOAD_ATTEMPTS) await db().uploads.delete(up.path);
+        else await db().uploads.update(up.path, { attempts });
+        console.warn("Picture upload refused", error);
+        continue;
       }
       await db().uploads.delete(up.path);
     }

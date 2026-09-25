@@ -33,22 +33,24 @@ Search the web for the item and reply with ONLY a JSON object {"pages": ["https:
 Prefer the manufacturer's or brand's own product page, then Wikipedia. Never list coles.com.au or woolworths.com.au.
 If the item is personal, one-off or too vague to have its own product page (for example "birthday card for Nan", "stuff for school", "present for Mum"), don't search; reply {"pages": []}. Also reply {"pages": []} if nothing fits.`;
 
-export async function findProductPages(name: string, context: string | null): Promise<string[]> {
-  const response = await anthropic().messages.create({
+export async function findProductPages(name: string, context: string | null, timeoutMs: number): Promise<string[]> {
+  const request = {
     model: serverEnv.categoryModel(),
     max_tokens: 1024,
     system: SYSTEM,
     tools: [
       {
-        type: "web_search_20250305",
-        name: "web_search",
+        type: "web_search_20250305" as const,
+        name: "web_search" as const,
         max_uses: 1,
         blocked_domains: ["coles.com.au", "woolworths.com.au"],
-        user_location: { type: "approximate", country: "AU", timezone: "Australia/Sydney" },
+        user_location: { type: "approximate" as const, country: "AU", timezone: "Australia/Sydney" },
       },
     ],
-    messages: [{ role: "user", content: `Item: ${name}${context ? `\nContext: ${context}` : ""}` }],
-  });
+    messages: [{ role: "user" as const, content: `Item: ${name}${context ? `\nContext: ${context}` : ""}` }],
+  };
+  // No automatic retries: each attempt is a paid search, and the caller has a deadline.
+  const response = await anthropic().messages.create(request, { timeout: timeoutMs, maxRetries: 0 });
   const text = response.content
     .filter((b): b is Extract<typeof b, { type: "text" }> => b.type === "text")
     .map((b) => b.text)
@@ -62,14 +64,20 @@ export async function findProductPages(name: string, context: string | null): Pr
   }
 }
 
-export async function webPictureCandidates(name: string, context: string | null): Promise<string[]> {
-  const pages = await findProductPages(name, context);
+export async function webPictureCandidates(
+  name: string,
+  context: string | null,
+  timeoutMs: number,
+): Promise<string[]> {
+  const deadline = Date.now() + timeoutMs;
+  const pages = await findProductPages(name, context, Math.max(1_000, timeoutMs - 10_000));
   const images: string[] = [];
   for (const page of pages) {
+    if (deadline - Date.now() < 3_000) break;
     try {
       const { body, type, url } = await safeFetch(page, {
         maxBytes: 2 * 1024 * 1024,
-        timeoutMs: 8000,
+        timeoutMs: Math.min(8_000, deadline - Date.now()),
         accept: "text/html",
         userAgent: serverEnv.offUserAgent(),
       });

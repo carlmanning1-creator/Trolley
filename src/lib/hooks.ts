@@ -1,7 +1,7 @@
 "use client";
 
 import { useLiveQuery } from "dexie-react-hooks";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { db } from "@/lib/db";
 import { getServerStatus, getStatus, subscribeStatus } from "@/lib/sync";
 import { isActive } from "@/lib/shopping";
@@ -38,14 +38,17 @@ export function useItems(listId: string | null): ListItemRow[] | undefined {
   );
 }
 
+// Keyed by id. The map only changes when the rows do, so components can depend on it.
+function useById<T extends { id: string }>(rows: T[] | undefined): Map<string, T> {
+  return useMemo(() => new Map((rows ?? []).map((r) => [r.id, r])), [rows]);
+}
+
 export function useProfiles(): Map<string, ProfileRow> {
-  const rows = useLiveQuery(() => db().profiles.toArray(), []);
-  return new Map((rows ?? []).map((p) => [p.id, p]));
+  return useById(useLiveQuery(() => db().profiles.toArray(), []));
 }
 
 export function useProducts(): Map<string, ProductRow> {
-  const rows = useLiveQuery(() => db().products.toArray(), []);
-  return new Map((rows ?? []).map((p) => [p.id, p]));
+  return useById(useLiveQuery(() => db().products.toArray(), []));
 }
 
 // Closes an overlay when the phone's back button is pressed, instead of leaving the app.

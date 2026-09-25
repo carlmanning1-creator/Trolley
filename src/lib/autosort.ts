@@ -6,23 +6,27 @@ import { aisleIdByName, normaliseName, nowIso } from "@/lib/mutations";
 import { patchLocal } from "@/lib/sync";
 import type { ListItemRow, ProductRow } from "@/lib/types";
 
-// Gives a product an aisle and moves any unsorted items for it into that aisle.
-export async function assignAisle(product: ProductRow, aisleId: string | null) {
-  if (!aisleId) return;
-  // Only fill in an aisle if nobody has set one in the meantime.
-  const updated = await patchLocal<ProductRow>("products", product.id, (cur) =>
-    cur.aisle_id ? null : { aisle_id: aisleId, updated_at: nowIso() },
-  );
-  if (!updated || updated.aisle_id !== aisleId) return;
+// Puts every unsorted, open item for a product into the given aisle.
+async function fillItemAisles(productId: string, aisleId: string) {
   const items = await db()
     .list_items.where("product_id")
-    .equals(product.id)
+    .equals(productId)
     .filter((i) => !i.deleted_at && !i.aisle_id)
     .toArray();
   const t = nowIso();
   for (const i of items) {
     await patchLocal<ListItemRow>("list_items", i.id, (cur) => (cur.aisle_id ? null : { aisle_id: aisleId, updated_at: t }));
   }
+}
+
+// Gives a product an aisle and moves any unsorted items for it into that aisle.
+async function assignAisle(product: ProductRow, aisleId: string | null) {
+  if (!aisleId) return;
+  // Only fill in an aisle if nobody has set one in the meantime.
+  const updated = await patchLocal<ProductRow>("products", product.id, (cur) =>
+    cur.aisle_id ? null : { aisle_id: aisleId, updated_at: nowIso() },
+  );
+  if (updated?.aisle_id === aisleId) await fillItemAisles(product.id, aisleId);
 }
 
 const inflight = new Set<string>();
@@ -56,26 +60,11 @@ export async function sweepUnsorted(): Promise<void> {
   for (const id of ids) {
     const product = await db().products.get(id);
     if (!product || product.deleted_at) continue;
+    // Sorted already (say on another phone): bring its items in line.
     if (product.aisle_id) {
-      await assignAisleToItems(product);
+      await fillItemAisles(product.id, product.aisle_id);
       continue;
     }
     await autoSortProduct(product);
-  }
-}
-
-// An item can be unsorted while its product already has an aisle (for example the product was
-// sorted on another phone). Bring the item in line.
-async function assignAisleToItems(product: ProductRow) {
-  const items = await db()
-    .list_items.where("product_id")
-    .equals(product.id)
-    .filter((i) => !i.deleted_at && !i.aisle_id)
-    .toArray();
-  const t = nowIso();
-  for (const i of items) {
-    await patchLocal<ListItemRow>("list_items", i.id, (cur) =>
-      cur.aisle_id ? null : { aisle_id: product.aisle_id, updated_at: t },
-    );
   }
 }

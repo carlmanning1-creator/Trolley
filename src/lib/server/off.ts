@@ -199,7 +199,12 @@ function httpsGetImage(url: string, timeoutMs: number, redirectsLeft = 2): Promi
   });
 }
 
-export async function downloadOffImage(url: string): Promise<{ bytes: ArrayBuffer; type: string }> {
+// timeBudgetMs caps the whole download, retry included, so a caller with its own deadline
+// (a server function that is stopped at 60 seconds) is never left waiting past it.
+export async function downloadOffImage(
+  url: string,
+  timeBudgetMs = 35_000,
+): Promise<{ bytes: ArrayBuffer; type: string }> {
   if (!isOffImageUrl(url)) throw new Error("Not an Open Food Facts image");
   // Machines that reach the internet through an HTTP proxy (like our build and test containers)
   // need fetch, which honours the proxy; everywhere else (Vercel) use the dual-stack client.
@@ -215,11 +220,15 @@ export async function downloadOffImage(url: string): Promise<{ bytes: ArrayBuffe
     if (bytes.byteLength > 5 * 1024 * 1024) throw new Error("Image too large");
     return { bytes, type };
   };
+  const deadline = Date.now() + timeBudgetMs;
   let got: { bytes: Buffer; type: string };
   try {
-    got = await attempt(15_000);
-  } catch {
-    got = await attempt(20_000); // OFF's image server is sometimes slow; one retry
+    got = await attempt(Math.min(15_000, timeBudgetMs));
+  } catch (err) {
+    // OFF's image server is sometimes slow; one retry if there's time for a real attempt.
+    const left = deadline - Date.now();
+    if (left < 5_000) throw err;
+    got = await attempt(Math.min(20_000, left));
   }
   const bytes = got.bytes.buffer.slice(got.bytes.byteOffset, got.bytes.byteOffset + got.bytes.byteLength) as ArrayBuffer;
   return { bytes, type: got.type };

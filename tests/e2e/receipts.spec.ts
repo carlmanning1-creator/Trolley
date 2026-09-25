@@ -79,6 +79,21 @@ test("a photographed Woolworths receipt ticks off the matching items after revie
   expect(lines!.map((l) => Number(l.line_total)).reduce((a, b) => a + b, 0)).toBeCloseTo(19.35, 2);
   const { data: milk } = await admin.from("products").select("times_bought, last_bought_at").eq("household_id", house.id).eq("name", "Milk").single();
   expect(milk!.times_bought).toBe(1);
+
+  // Confirming again (a double tap, or a retry after a dropped reply) changes nothing.
+  const link = await admin.auth.admin.generateLink({ type: "magiclink", email: person.email });
+  const { createClient } = await import("@supabase/supabase-js");
+  const c = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, {
+    auth: { persistSession: false },
+  });
+  const v = await c.auth.verifyOtp({ email: person.email, token: link.data.properties!.email_otp, type: "email" });
+  const again = await page.request.post("/api/receipts/confirm", {
+    headers: { Authorization: `Bearer ${v.data.session!.access_token}` },
+    data: { receiptId: receipt!.id, lines: [] },
+  });
+  expect(again.status()).toBe(409);
+  const { data: milkAfter } = await admin.from("products").select("times_bought").eq("household_id", house.id).eq("name", "Milk").single();
+  expect(milkAfter!.times_bought).toBe(1);
 });
 
 test("a photo that isn't a receipt fails with a friendly message", async ({ page }) => {

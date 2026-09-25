@@ -25,7 +25,7 @@ export type MetaEntry = { key: string; value: string };
 export type ImageEntry = { path: string; blob: Blob; saved_at: string };
 
 // A picture taken on this device that still has to be uploaded (kept until there's signal).
-export type UploadEntry = { path: string; bucket: string; content_type: string; queued_at: string };
+export type UploadEntry = { path: string; bucket: string; content_type: string; queued_at: string; attempts?: number };
 
 // A receipt photo taken with no signal, kept until it can be uploaded and read.
 export type PendingReceipt = { id: string; list_id: string; blob: Blob; queued_at: string; error?: string };

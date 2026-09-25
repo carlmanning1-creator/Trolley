@@ -107,18 +107,30 @@ export async function patchLocal<T extends AnyRow>(
 // Applying rows that came from the server
 // ---------------------------------------------------------------------------
 
+type Stamped = AnyRow & { synced_at?: string };
+
 // A row with a local change still waiting to go up is left alone: our version will reach the
 // server, the server settles the conflict, and the settled row comes back through Realtime.
+// A copy older than the one we hold (a late Realtime message overtaken by a catch-up read) is
+// ignored too, judged by the server's own clock.
 export async function applyRemote(table: SyncedTable, rows: AnyRow[]): Promise<void> {
   if (rows.length === 0) return;
   const d = db();
   await d.transaction("rw", d.table(table), d.outbox, async () => {
+    const ids = rows.map((r) => r.id);
     const pending = new Set(
-      (await d.outbox.where("[table+row_id]").anyOf(rows.map((r) => [table, r.id])).toArray()).map(
-        (e) => e.row_id,
-      ),
+      (await d.outbox.where("[table+row_id]").anyOf(ids.map((id) => [table, id])).toArray()).map((e) => e.row_id),
     );
-    const incoming = rows.filter((r) => !pending.has(r.id));
+    const held = new Map(
+      ((await d.table(table).bulkGet(ids)) as (Stamped | undefined)[])
+        .filter((r): r is Stamped => Boolean(r))
+        .map((r) => [r.id, r.synced_at]),
+    );
+    const incoming = (rows as Stamped[]).filter((r) => {
+      if (pending.has(r.id)) return false;
+      const mine = held.get(r.id);
+      return !mine || !r.synced_at || new Date(r.synced_at).getTime() >= new Date(mine).getTime();
+    });
     if (incoming.length) await d.table(table).bulkPut(incoming);
   });
 }
@@ -129,7 +141,13 @@ export async function applyRemote(table: SyncedTable, rows: AnyRow[]): Promise<v
 
 let flushing = false;
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
-let retryDelay = 2000;
+let retryDelay = 2_000;
+
+// Tries again later, waiting twice as long each time (2 seconds up to 30).
+function retryLater() {
+  scheduleFlush(retryDelay);
+  retryDelay = Math.min(retryDelay * 2, 30_000);
+}
 
 export function scheduleFlush(delay = 0) {
   if (typeof window === "undefined") return;
@@ -232,8 +250,7 @@ export async function flush(): Promise<void> {
       if (error) {
         if (!isRejection(error)) {
           setStatus({ online: false });
-          scheduleFlush(retryDelay);
-          retryDelay = Math.min(retryDelay * 2, 30000);
+          retryLater();
           return;
         }
         // The server refused these rows. Retry a few times (a missing parent row may still be
@@ -249,8 +266,7 @@ export async function flush(): Promise<void> {
         }
         await refreshPending();
         if (retry.length) {
-          scheduleFlush(retryDelay);
-          retryDelay = Math.min(retryDelay * 2, 30000);
+          retryLater();
           return;
         }
         continue;
@@ -262,15 +278,14 @@ export async function flush(): Promise<void> {
       await applyRemote(table, returned);
       // Rows the server kept its own newer copy of come back empty; fetch that copy.
       if (missing.length) await refetch(table, missing);
-      retryDelay = 2000;
+      retryDelay = 2_000;
       setStatus({ online: true });
       await refreshPending();
     }
   } catch (err) {
     console.warn("Sync push failed", err);
     setStatus({ online: false });
-    scheduleFlush(retryDelay);
-    retryDelay = Math.min(retryDelay * 2, 30000);
+    retryLater();
   } finally {
     flushing = false;
     setStatus({ syncing: false });
@@ -373,7 +388,7 @@ export async function startSync(householdId: string): Promise<void> {
 
   const onOnline = () => {
     setStatus({ online: true });
-    retryDelay = 2000;
+    retryDelay = 2_000;
     scheduleFlush(0);
     void pull();
   };

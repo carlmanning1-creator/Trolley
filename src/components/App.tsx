@@ -1,13 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AddBar } from "@/components/AddBar";
 import { useAuth } from "@/components/AuthProvider";
 import { DuplicateSheet } from "@/components/DuplicateSheet";
 import { ItemSheet } from "@/components/ItemSheet";
 import { ListView } from "@/components/ListView";
+import { ListsSheet } from "@/components/ListsSheet";
 import { Settings } from "@/components/Settings";
-import { Sheet } from "@/components/Sheet";
 import { NotificationSettings } from "@/components/NotificationSettings";
 import { PictureEditor } from "@/components/PictureEditor";
 import { ReceiptsSheet } from "@/components/ReceiptsSheet";
@@ -27,14 +27,13 @@ import {
   useProfiles,
   useSyncStatus,
 } from "@/lib/hooks";
-import { downloadCsv, printList, shareList } from "@/lib/exportList";
 import { processPendingReceipts } from "@/lib/receipts";
 import { noticeItemAdded, sendPendingNotices } from "@/lib/shopping";
 import { autoSortProduct, sweepUnsorted } from "@/lib/autosort";
 import { findPicture, flushUploads, sweepPictures } from "@/lib/images";
 import { updateProduct, type Actor, type AddResult } from "@/lib/mutations";
 import { startSync, stopSync } from "@/lib/sync";
-import type { ListItemRow } from "@/lib/types";
+import type { AisleRow, ListItemRow, ProductRow } from "@/lib/types";
 
 const ACTIVE_LIST_KEY = "trolley-active-list";
 
@@ -93,17 +92,16 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
   const pending = usePendingCount();
   const mySession = sessions.find((s) => s.started_by === actor.userId);
   // While I'm shopping, things other people add after I started get highlighted.
-  const highlightIds = useMemo(
-    () =>
-      new Set(
-        mySession
-          ? items
-              .filter((i) => !i.checked && i.added_by !== actor.userId && i.created_at >= mySession.started_at)
-              .map((i) => i.id)
-          : [],
-      ),
-    [items, mySession, actor.userId],
-  );
+  // (Compared as times, not text: the server and the phone write timestamps differently.)
+  const highlightIds = useMemo(() => {
+    if (!mySession) return new Set<string>();
+    const since = Date.parse(mySession.started_at);
+    return new Set(
+      items
+        .filter((i) => !i.checked && i.added_by !== actor.userId && Date.parse(i.created_at) >= since)
+        .map((i) => i.id),
+    );
+  }, [items, mySession, actor.userId]);
 
   // Notifications go once the thing they're about has reached the server.
   useEffect(() => {
@@ -304,24 +302,10 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
         onClose={closeEditor}
         extra={
           editingProduct && (
-            <>
-            <PictureEditor
+            <ItemExtras
               product={editingProduct}
               aisle={aisles.find((a) => a.id === (liveEditing?.aisle_id ?? editingProduct.aisle_id))}
             />
-            <label className="flex min-h-11 items-center gap-3">
-              <input
-                type="checkbox"
-                checked={editingProduct.is_staple}
-                onChange={(e) => void updateProduct(editingProduct, { is_staple: e.target.checked })}
-                className="h-5 w-5 accent-[var(--brand)]"
-              />
-              <span>
-                <span className="font-medium">Staple</span>
-                <span className="block text-sm text-muted">Keep it on the Staples sheet for one-tap adding</span>
-              </span>
-            </label>
-            </>
           )
         }
       />
@@ -345,58 +329,18 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
         aisles={aisles}
       />
 
-      <Sheet open={overlay === "lists"} onClose={closeOverlay} title="Lists">
-        <ListPicker
-          lists={lists.map((l) => ({ id: l.id, label: `${l.icon} ${l.name}` }))}
-          activeId={activeList.id}
-          onPick={(id) => {
-            chooseList(id);
-            closeOverlay();
-          }}
-          footer={
-            <div className="flex flex-col gap-3">
-              <div>
-                <p className="mb-2 font-semibold">
-                  Export {activeList.icon} {activeList.name}
-                </p>
-                <div className="grid grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const how = await shareList({ list: activeList, items, aisles, profiles });
-                      if (how === "copied") setToast("List copied. Paste it anywhere.");
-                    }}
-                    className="min-h-12 rounded-xl border border-border px-2 text-sm font-medium"
-                  >
-                    📤 Share
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => downloadCsv({ list: activeList, items, aisles, profiles })}
-                    className="min-h-12 rounded-xl border border-border px-2 text-sm font-medium"
-                  >
-                    📊 Spreadsheet
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => printList({ list: activeList, items, aisles, profiles })}
-                    className="min-h-12 rounded-xl border border-border px-2 text-sm font-medium"
-                  >
-                    🖨️ Print
-                  </button>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setOverlay("settings")}
-                className="min-h-12 w-full rounded-xl border border-border font-medium"
-              >
-                Add, rename or reorder lists
-              </button>
-            </div>
-          }
-        />
-      </Sheet>
+      <ListsSheet
+        open={overlay === "lists"}
+        onClose={closeOverlay}
+        lists={lists}
+        active={activeList}
+        items={items}
+        aisles={aisles}
+        profiles={profiles}
+        onPick={chooseList}
+        onManage={() => setOverlay("settings")}
+        onToast={setToast}
+      />
 
       <Settings
         open={overlay === "settings"}
@@ -410,33 +354,24 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
   );
 }
 
-function ListPicker({
-  lists,
-  activeId,
-  onPick,
-  footer,
-}: {
-  lists: { id: string; label: string }[];
-  activeId: string;
-  onPick: (id: string) => void;
-  footer: ReactNode;
-}) {
+// Picture and staple controls under the item editor: these belong to the product, so they
+// carry over to every list the product is on.
+function ItemExtras({ product, aisle }: { product: ProductRow; aisle: AisleRow | undefined }) {
   return (
-    <div className="flex flex-col gap-2">
-      {lists.map((l) => (
-        <button
-          key={l.id}
-          type="button"
-          onClick={() => onPick(l.id)}
-          aria-current={l.id === activeId ? "page" : undefined}
-          className={`min-h-14 rounded-xl px-4 text-left text-lg font-medium ${
-            l.id === activeId ? "bg-brand text-brand-contrast" : "bg-surface-2"
-          }`}
-        >
-          {l.label}
-        </button>
-      ))}
-      <div className="pt-2">{footer}</div>
-    </div>
+    <>
+      <PictureEditor product={product} aisle={aisle} />
+      <label className="flex min-h-11 items-center gap-3">
+        <input
+          type="checkbox"
+          checked={product.is_staple}
+          onChange={(e) => void updateProduct(product, { is_staple: e.target.checked })}
+          className="h-5 w-5 accent-[var(--brand)]"
+        />
+        <span>
+          <span className="font-medium">Staple</span>
+          <span className="block text-sm text-muted">Keep it on the Staples sheet for one-tap adding</span>
+        </span>
+      </label>
+    </>
   );
 }

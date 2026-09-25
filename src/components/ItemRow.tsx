@@ -176,7 +176,7 @@ export function ItemRow({
             <span aria-hidden>⚠</span>
           </button>
         )}
-        {item.link && (
+        {item.link && /^https?:\/\//i.test(item.link) && (
           <a
             href={item.link}
             target="_blank"

@@ -34,13 +34,13 @@ async function toWebp(bytes: Buffer | ArrayBuffer): Promise<Buffer> {
     .toBuffer();
 }
 
-async function fromUrl(url: string): Promise<Buffer | null> {
+async function fromUrl(url: string, timeoutMs: number): Promise<Buffer | null> {
   // Site logos and placeholder art are often what a page offers for sharing.
   if (/logo|placeholder|default[-_]?image|favicon|sprite/i.test(new URL(url).pathname)) return null;
   try {
     const got = await safeFetch(url, {
       maxBytes: 8 * 1024 * 1024,
-      timeoutMs: 12_000,
+      timeoutMs,
       accept: "image/*",
       userAgent: serverEnv.offUserAgent(),
     });
@@ -72,35 +72,49 @@ function queries(name: string, note: string | null | undefined): string[] {
   return extra ? [`${name} ${extra}`, name] : [name];
 }
 
+// The whole search has to finish inside the function's 60 seconds, with time left to convert
+// and store the picture. Each step only starts if it has a real chance of finishing.
+const SEARCH_BUDGET_MS = 48_000;
+const WEB_STEP_MIN_MS = 25_000; // a paid web search is only worth starting with this much left
+
 async function find(input: z.infer<typeof Body>, householdId: string): Promise<Found | null> {
+  const deadline = Date.now() + SEARCH_BUDGET_MS;
+  const left = () => deadline - Date.now();
   const phrases = queries(input.name, input.note);
+  // The barcode's picture and the best name match are often the same file; don't wait on a
+  // slow download twice.
+  const failedOff = new Set<string>();
+
+  const offPicture = async (off: { code: string; imageUrl: string | null } | null | undefined): Promise<Found | null> => {
+    if (!off?.imageUrl || failedOff.has(off.imageUrl) || left() < 5_000) return null;
+    try {
+      const { bytes } = await downloadOffImage(off.imageUrl, left() - 2_000);
+      return { bytes: Buffer.from(bytes), source: "off", offCode: off.code };
+    } catch {
+      failedOff.add(off.imageUrl);
+      return null;
+    }
+  };
+
   if (input.barcode) {
-    try {
-      const off = await lookupBarcode(input.barcode);
-      if (off?.imageUrl) return { bytes: Buffer.from((await downloadOffImage(off.imageUrl)).bytes), source: "off", offCode: off.code };
-    } catch {
-      // carry on to the next source
-    }
+    const hit = await offPicture(await lookupBarcode(input.barcode).catch(() => null));
+    if (hit) return hit;
   }
   for (const phrase of phrases) {
-    try {
-      const [off] = await searchByName(phrase, 3, true, input.aisle ?? null);
-      if (off?.imageUrl) return { bytes: Buffer.from((await downloadOffImage(off.imageUrl)).bytes), source: "off", offCode: off.code };
-    } catch {
-      // carry on
-    }
+    if (left() < 10_000) break;
+    const [off] = await searchByName(phrase, 3, true, input.aisle ?? null).catch(() => []);
+    const hit = await offPicture(off);
+    if (hit) return hit;
   }
   for (const phrase of phrases) {
-    try {
-      for (const url of await searchCommons(phrase)) {
-        const bytes = await fromUrl(url);
-        if (bytes) return { bytes, source: "commons" };
-      }
-    } catch {
-      // carry on
+    if (left() < 8_000) break;
+    for (const url of await searchCommons(phrase).catch(() => [])) {
+      if (left() < 5_000) break;
+      const bytes = await fromUrl(url, Math.min(12_000, left() - 2_000));
+      if (bytes) return { bytes, source: "commons" };
     }
   }
-  if (input.allowWeb !== false && (await underMonthlyCap(householdId))) {
+  if (input.allowWeb !== false && left() >= WEB_STEP_MIN_MS && (await underMonthlyCap(householdId))) {
     try {
       const context = [
         input.note && `the family's note: "${input.note}"`,
@@ -109,8 +123,9 @@ async function find(input: z.infer<typeof Body>, householdId: string): Promise<F
       ]
         .filter(Boolean)
         .join(", ");
-      for (const url of await webPictureCandidates(input.name, context || null)) {
-        const bytes = await fromUrl(url);
+      for (const url of await webPictureCandidates(input.name, context || null, left() - 8_000)) {
+        if (left() < 4_000) break;
+        const bytes = await fromUrl(url, Math.min(12_000, left() - 2_000));
         if (bytes) return { bytes, source: "web" };
       }
     } catch (err) {
