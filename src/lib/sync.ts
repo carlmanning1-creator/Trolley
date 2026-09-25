@@ -317,13 +317,22 @@ async function refetch(table: SyncedTable, ids: string[]) {
 const OVERLAP_MS = 60_000;
 const PAGE = 1000;
 let pulling: Promise<void> | null = null;
+let pullAgain = false;
 
+// One catch-up at a time. A request that arrives mid-way gets its own run straight after,
+// since the one in progress may have read the server before the change it's looking for.
 export function pull(): Promise<void> {
-  if (!pulling) {
-    pulling = doPull().finally(() => {
-      pulling = null;
-    });
+  if (pulling) {
+    pullAgain = true;
+    return pulling;
   }
+  pulling = doPull().finally(() => {
+    pulling = null;
+    if (pullAgain) {
+      pullAgain = false;
+      void pull();
+    }
+  });
   return pulling;
 }
 
