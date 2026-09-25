@@ -215,7 +215,7 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
                   type="button"
                   aria-current={l.id === activeList.id ? "page" : undefined}
                   onClick={() => chooseList(l.id)}
-                  className={`flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-4 font-medium ${
+                  className={`flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-3.5 font-medium ${
                     l.id === activeList.id ? "bg-brand text-brand-contrast" : "bg-surface-2"
                   }`}
                 >

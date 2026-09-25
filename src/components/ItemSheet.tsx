@@ -125,7 +125,7 @@ function ItemForm({
             type="button"
             aria-label="One less"
             onClick={() => setQuantity(step(quantity, -1))}
-            className="min-h-12 min-w-12 rounded-xl border border-border text-2xl"
+            className="min-h-12 min-w-12 flex-none rounded-xl border border-border text-2xl"
           >
             −
           </button>
@@ -135,13 +135,13 @@ function ItemForm({
             value={quantity}
             placeholder="–"
             onChange={(e) => setQuantity(e.target.value)}
-            className={`${field} w-20 text-center`}
+            className="min-h-12 w-16 flex-none rounded-xl border border-border bg-background px-2 text-center text-lg"
           />
           <button
             type="button"
             aria-label="One more"
             onClick={() => setQuantity(step(quantity, 1))}
-            className="min-h-12 min-w-12 rounded-xl border border-border text-2xl"
+            className="min-h-12 min-w-12 flex-none rounded-xl border border-border text-2xl"
           >
             +
           </button>
