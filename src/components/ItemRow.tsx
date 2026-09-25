@@ -66,6 +66,8 @@ export function ItemRow({
     if (Math.abs(mx) > 10 || Math.abs(my) > 10) {
       if (p.timer) clearTimeout(p.timer);
       p.timer = null;
+      // A drag, however short, isn't a tap: don't let the click that follows tick the item.
+      suppressClick.current = true;
     }
     // Only track clearly sideways drags, so scrolling the list still works.
     if (Math.abs(mx) > Math.abs(my) && Math.abs(mx) > 10) setDx(Math.max(-120, Math.min(120, mx)));
