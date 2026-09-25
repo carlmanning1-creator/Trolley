@@ -68,10 +68,10 @@ export async function webPictureCandidates(
   name: string,
   context: string | null,
   timeoutMs: number,
-): Promise<string[]> {
+): Promise<{ image: string; page: string }[]> {
   const deadline = Date.now() + timeoutMs;
   const pages = await findProductPages(name, context, Math.max(1_000, timeoutMs - 10_000));
-  const images: string[] = [];
+  const images: { image: string; page: string }[] = [];
   for (const page of pages) {
     if (deadline - Date.now() < 3_000) break;
     try {
@@ -83,7 +83,7 @@ export async function webPictureCandidates(
       });
       if (!type.includes("html")) continue;
       const img = pickPageImage(body.toString("utf8"), url);
-      if (img) images.push(img);
+      if (img) images.push({ image: img, page: url });
     } catch {
       // try the next page
     }

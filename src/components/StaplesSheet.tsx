@@ -32,18 +32,19 @@ export function StaplesSheet({
   const aisleOrder = useMemo(() => new Map(aisles.map((a, i) => [a.id, i])), [aisles]);
 
   const data = useLiveQuery(async () => {
-    const products = (await db().products.toArray()).filter((p) => !p.deleted_at);
-    const items = await db().list_items.toArray();
-    const onList = new Set(
-      items.filter((i) => i.list_id === listId && !i.deleted_at && !i.checked).map((i) => i.product_id),
-    );
-    // Bought = ticked in the last eight weeks (plus anything a confirmed receipt counted).
+    const [allProducts, items, purchases] = await Promise.all([
+      db().products.toArray(),
+      db().list_items.where("list_id").equals(listId).toArray(),
+      db().purchases.toArray(),
+    ]);
+    const products = allProducts.filter((p) => !p.deleted_at);
+    const onList = new Set(items.filter((i) => !i.deleted_at && !i.checked).map((i) => i.product_id));
+    // Bought = ticked off in the last eight weeks (plus anything a confirmed receipt counted
+    // before purchase history existed).
     const since = Date.now() - EIGHT_WEEKS_MS;
     const counts = new Map<string, number>();
-    for (const i of items) {
-      if (i.product_id && i.checked && i.checked_at && new Date(i.checked_at).getTime() >= since) {
-        counts.set(i.product_id, (counts.get(i.product_id) ?? 0) + 1);
-      }
+    for (const p of purchases) {
+      if (!p.deleted_at && Date.parse(p.bought_at) >= since) counts.set(p.product_id, (counts.get(p.product_id) ?? 0) + 1);
     }
     for (const p of products) {
       if (p.last_bought_at && new Date(p.last_bought_at).getTime() >= since && !counts.has(p.id)) {

@@ -4,7 +4,8 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { db } from "@/lib/db";
 import { getServerStatus, getStatus, subscribeStatus } from "@/lib/sync";
-import { isActive } from "@/lib/shopping";
+import { runningLow, type Suggestion } from "@/lib/runningLow";
+import { isActive } from "@/lib/trips";
 import type { AisleRow, ListItemRow, ListRow, ProductRow, ProfileRow, ShoppingSessionRow } from "@/lib/types";
 
 export function useSyncStatus() {
@@ -76,15 +77,36 @@ export function useBackToClose(open: boolean, close: () => void) {
 }
 
 // Shopping trips in progress on a list (re-checked each minute so forgotten trips expire).
-export function useActiveSessions(listId: string | null): ShoppingSessionRow[] {
+// The current minute, updating once a minute, for things that change with time alone.
+function useMinute(): number {
   const [minute, setMinute] = useState(() => Math.floor(Date.now() / 60_000));
   useEffect(() => {
     const t = setInterval(() => setMinute(Math.floor(Date.now() / 60_000)), 60_000);
     return () => clearInterval(t);
   }, []);
+  return minute;
+}
+
+export function useActiveSessions(listId: string | null): ShoppingSessionRow[] {
+  const minute = useMinute();
   const rows = useLiveQuery(
     async () => (listId ? await db().shopping_sessions.where("list_id").equals(listId).toArray() : []),
     [listId],
   );
   return (rows ?? []).filter((s) => isActive(s, minute * 60_000 + 59_999));
+}
+
+// What's probably due on this list, most overdue first (see runningLow). Rechecked each
+// minute as well as whenever the data changes, since things become due with time alone.
+export function useRunningLow(listId: string | null): Suggestion[] | undefined {
+  const minute = useMinute();
+  return useLiveQuery(async () => {
+    if (!listId) return [];
+    const [products, purchases, items] = await Promise.all([
+      db().products.toArray(),
+      db().purchases.toArray(),
+      db().list_items.where("list_id").equals(listId).toArray(),
+    ]);
+    return runningLow({ products, purchases, items, listId });
+  }, [listId, minute]);
 }

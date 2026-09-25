@@ -5,6 +5,7 @@ import { callApi } from "@/lib/api";
 import { db, getMeta, setMeta } from "@/lib/db";
 import { resizeImage } from "@/lib/imageResize";
 import { normaliseName, nowIso, updateProduct } from "@/lib/mutations";
+import { offProductPage, sourceUrlOf } from "@/lib/pictureSources";
 import { isRejection, patchLocal } from "@/lib/sync";
 import { supabase } from "@/lib/supabase";
 import type { ImageSource, ProductRow } from "@/lib/types";
@@ -89,7 +90,7 @@ export async function setProductPhoto(
   const path = `${product.household_id}/${product.id}-${Date.now()}.${ext}`;
   await putLocalImage(path, blob);
   await db().uploads.put({ path, bucket: PRODUCT_BUCKET, content_type: blob.type, queued_at: nowIso() });
-  await updateProduct(product, { image_path: path, image_source: source });
+  await updateProduct(product, { image_path: path, image_source: source, image_source_url: null });
   void flushUploads();
 }
 
@@ -169,7 +170,13 @@ export async function applyOffPicture(product: ProductRow, off: OffProduct): Pro
   await patchLocal<ProductRow>("products", product.id, (cur) =>
     cur.image_path && cur.image_source !== "off"
       ? null
-      : { image_path: path, image_source: "off", off_code: off.code, updated_at: nowIso() },
+      : {
+          image_path: path,
+          image_source: "off",
+          image_source_url: offProductPage(off.code),
+          off_code: off.code,
+          updated_at: nowIso(),
+        },
   );
 }
 
@@ -207,9 +214,16 @@ export async function findPicture(product: ProductRow, opts: FindOptions = {}): 
   if (!force && tried && Date.now() - new Date(tried).getTime() < TRIED_FOR_MS) return false;
   lookedUp.add(product.id);
   try {
+    const fresh = (await db().products.get(product.id)) ?? product;
     const item = await db().list_items.where("product_id").equals(product.id).first();
     const list = item ? await db().lists.get(item.list_id) : undefined;
-    const res = await callApi<{ found: boolean; path?: string; source?: ImageSource; offCode?: string | null }>(
+    const res = await callApi<{
+      found: boolean;
+      path?: string;
+      source?: ImageSource;
+      sourceUrl?: string;
+      offCode?: string | null;
+    }>(
       "/api/pictures/find",
       {
         method: "POST",
@@ -220,6 +234,7 @@ export async function findPicture(product: ProductRow, opts: FindOptions = {}): 
           barcode: product.barcode ?? product.off_code ?? null,
           aisle: (await aisleName(product)) ?? null,
           listName: list?.name ?? null,
+          exclude: fresh.rejected_sources ?? [],
         },
       },
     );
@@ -234,6 +249,7 @@ export async function findPicture(product: ProductRow, opts: FindOptions = {}): 
         : {
             image_path: res.path!,
             image_source: res.source ?? "web",
+            image_source_url: res.sourceUrl ?? null,
             ...(res.offCode ? { off_code: res.offCode } : {}),
             updated_at: nowIso(),
           },
@@ -264,4 +280,21 @@ export async function sweepPictures(): Promise<void> {
   } finally {
     sweeping = false;
   }
+}
+
+// "Wrong picture": removes it, remembers never to use that source for this product again,
+// and looks for the next best. Returns whether another picture was found.
+export async function rejectPicture(product: ProductRow): Promise<boolean> {
+  const updated = await patchLocal<ProductRow>("products", product.id, (cur) => {
+    const source = sourceUrlOf(cur);
+    return {
+      rejected_sources: source ? [...new Set([...(cur.rejected_sources ?? []), source])] : (cur.rejected_sources ?? []),
+      image_path: null,
+      image_source: "none",
+      image_source_url: null,
+      updated_at: nowIso(),
+    };
+  });
+  if (!updated || !navigator.onLine) return false;
+  return findPicture(updated, { force: true, keepPhotos: false });
 }

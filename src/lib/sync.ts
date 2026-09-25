@@ -166,18 +166,22 @@ export function isRejection(error: { status?: number } | null): boolean {
   return status >= 400 && status < 500 && ![401, 408, 429].includes(status);
 }
 
-// Columns only the server writes.
+// Columns added after launch: rows saved on the device before then don't have them.
+const COLUMN_DEFAULTS: Partial<Record<SyncedTable, Record<string, unknown>>> = {
+  list_items: { link: null, distinct_from: [] },
+  products: { image_source_url: null, rejected_sources: [], hide_running_low: false },
+};
+
+// Columns only the server writes are left out.
 function forServer(table: SyncedTable, row: AnyRow): Record<string, unknown> {
   const { synced_at: _synced, ...rest } = row as AnyRow & { synced_at?: string };
   void _synced;
-  // Items saved on the device before a column existed are missing it; send the server's
-  // default so every row in a batch has the same columns.
-  if (table === "list_items") {
-    const r = rest as Record<string, unknown>;
-    if (r.link === undefined) r.link = null;
-    if (r.distinct_from === undefined) r.distinct_from = [];
+  // Every row in a batch must have the same columns, so fill in the ones older rows lack.
+  const r = rest as Record<string, unknown>;
+  for (const [column, fallback] of Object.entries(COLUMN_DEFAULTS[table] ?? {})) {
+    if (r[column] === undefined) r[column] = fallback;
   }
-  return rest;
+  return r;
 }
 
 const MAX_ATTEMPTS = 5;

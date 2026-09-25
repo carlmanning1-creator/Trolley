@@ -5,6 +5,7 @@ import type {
   ListRow,
   ProductRow,
   ProfileRow,
+  PurchaseRow,
   ShoppingSessionRow,
   SyncedTable,
 } from "@/lib/types";
@@ -37,6 +38,7 @@ export class TrolleyDB extends Dexie {
   products!: EntityTable<ProductRow, "id">;
   list_items!: EntityTable<ListItemRow, "id">;
   shopping_sessions!: EntityTable<ShoppingSessionRow, "id">;
+  purchases!: EntityTable<PurchaseRow, "id">;
   outbox!: EntityTable<OutboxEntry, "seq">;
   meta!: EntityTable<MetaEntry, "key">;
   images!: EntityTable<ImageEntry, "path">;
@@ -58,6 +60,7 @@ export class TrolleyDB extends Dexie {
     });
     this.version(2).stores({ uploads: "path" });
     this.version(3).stores({ pending_receipts: "id" });
+    this.version(4).stores({ purchases: "id, product_id, list_item_id" });
   }
 }
 

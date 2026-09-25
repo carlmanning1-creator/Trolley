@@ -38,6 +38,7 @@ export function Settings({
   actor,
   profile,
   onSignOut,
+  onOpenReceipts,
   notifications,
 }: {
   open: boolean;
@@ -45,6 +46,7 @@ export function Settings({
   actor: Actor;
   profile: ProfileRow | undefined;
   onSignOut: () => void;
+  onOpenReceipts: () => void;
   notifications?: ReactNode;
 }) {
   const lists = useLists() ?? [];
@@ -82,6 +84,12 @@ export function Settings({
               <AisleEditor key={`${a.id}:${a.name}`} aisle={a} first={i === 0} last={i === aisles.length - 1} />
             ))}
           </ul>
+        </Section>
+
+        <Section title="Receipts">
+          <button type="button" onClick={onOpenReceipts} className="min-h-12 rounded-xl border border-border px-4 font-medium">
+            🧾 Scan or review receipts
+          </button>
         </Section>
 
         <Section title="Account">

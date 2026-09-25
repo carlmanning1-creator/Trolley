@@ -29,6 +29,11 @@ test.describe.configure({ mode: "serial" });
 test.setTimeout(150_000);
 
 const item = (page: Page, name: string) => page.locator(`[data-testid="list-item"][data-name="${name}"]`);
+// Receipts live in Settings (Running low took their place in the bottom bar).
+async function openReceipts(page: Page) {
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: /Scan or review receipts/ }).click();
+}
 async function add(page: Page, text: string) {
   await page.getByLabel("Add an item").fill(text);
   await page.getByLabel("Add an item").press("Enter");
@@ -39,7 +44,7 @@ test("a photographed Woolworths receipt ticks off the matching items after revie
   for (const t of ["Milk", "Bananas", "Bread", "Eggs"]) await add(page, t);
   await expect(page.getByTestId("sync-status")).toHaveText("Synced", { timeout: 20_000 });
 
-  await page.getByRole("button", { name: "Receipts" }).click();
+  await openReceipts(page);
   await page.getByLabel("Upload a receipt photo").setInputFiles({
     name: "receipt.jpg",
     mimeType: "image/jpeg",
@@ -98,7 +103,7 @@ test("a photographed Woolworths receipt ticks off the matching items after revie
 
 test("a photo that isn't a receipt fails with a friendly message", async ({ page }) => {
   await signInThroughUi(page, person);
-  await page.getByRole("button", { name: "Receipts" }).click();
+  await openReceipts(page);
   const sharp = (await import("sharp")).default;
   const blank = await sharp({ create: { width: 800, height: 600, channels: 3, background: "#3b82f6" } }).jpeg().toBuffer();
   await page.getByLabel("Upload a receipt photo").setInputFiles({ name: "sky.jpg", mimeType: "image/jpeg", buffer: blank });
@@ -110,7 +115,7 @@ test("a receipt photographed with no signal waits, then gets read when signal re
   await signInThroughUi(page, person);
   await add(page, "Milk");
   await expect(page.getByTestId("sync-status")).toHaveText("Synced", { timeout: 20_000 });
-  await page.getByRole("button", { name: "Receipts" }).click();
+  await openReceipts(page);
   await context.setOffline(true);
   await page.getByLabel("Upload a receipt photo").setInputFiles({
     name: "receipt.jpg",

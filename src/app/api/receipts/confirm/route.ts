@@ -65,13 +65,29 @@ export async function POST(req: Request) {
   };
 
   if (itemIds.length) {
-    const { error } = await db
+    const { data: ticked, error } = await db
       .from("list_items")
       .update({ checked: true, checked_by: caller.userId, checked_at: now, check_changed_at: now })
       .eq("household_id", hh)
       .in("id", itemIds)
-      .eq("checked", false);
+      .eq("checked", false)
+      .select("id, product_id, list_id");
     if (error) return giveBack("Couldn't tick the items.");
+    // Same purchase history a tick on the phone leaves, so Running low learns from receipts too.
+    const purchases = (ticked ?? [])
+      .filter((i) => i.product_id)
+      .map((i) => ({
+        household_id: hh,
+        product_id: i.product_id,
+        list_item_id: i.id,
+        list_id: i.list_id,
+        bought_by: caller.userId,
+        bought_at: boughtAt,
+      }));
+    if (purchases.length) {
+      const { error: historyError } = await db.from("purchases").insert(purchases);
+      if (historyError) console.error("purchase history insert failed", historyError);
+    }
   }
 
   await db.from("receipt_lines").delete().eq("receipt_id", receiptId);

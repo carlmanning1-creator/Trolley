@@ -2,6 +2,7 @@ import sharp from "sharp";
 import { z } from "zod";
 import { asCaller, getCaller, unauthorised } from "@/lib/server/auth";
 import { searchCommons } from "@/lib/server/commons";
+import { offProductPage } from "@/lib/pictureSources";
 import { downloadOffImage, lookupBarcode, searchByName } from "@/lib/server/off";
 import { safeFetch } from "@/lib/server/safeFetch";
 import { serverEnv } from "@/lib/server/env";
@@ -21,9 +22,11 @@ const Body = z.object({
   aisle: z.string().max(60).nullable().optional(),
   listName: z.string().max(60).nullable().optional(),
   allowWeb: z.boolean().optional(),
+  // Source pages of pictures someone marked as wrong for this product.
+  exclude: z.array(z.string().max(2048)).max(50).optional(),
 });
 
-type Found = { bytes: Buffer; source: "off" | "commons" | "web"; offCode?: string };
+type Found = { bytes: Buffer; source: "off" | "commons" | "web"; sourceUrl: string; offCode?: string };
 
 async function toWebp(bytes: Buffer | ArrayBuffer): Promise<Buffer> {
   return sharp(Buffer.from(bytes as ArrayBuffer), { failOn: "error" })
@@ -81,15 +84,18 @@ async function find(input: z.infer<typeof Body>, householdId: string): Promise<F
   const deadline = Date.now() + SEARCH_BUDGET_MS;
   const left = () => deadline - Date.now();
   const phrases = queries(input.name, input.note);
+  const rejected = new Set(input.exclude ?? []);
   // The barcode's picture and the best name match are often the same file; don't wait on a
   // slow download twice.
   const failedOff = new Set<string>();
 
   const offPicture = async (off: { code: string; imageUrl: string | null } | null | undefined): Promise<Found | null> => {
     if (!off?.imageUrl || failedOff.has(off.imageUrl) || left() < 5_000) return null;
+    const sourceUrl = offProductPage(off.code);
+    if (rejected.has(sourceUrl)) return null;
     try {
       const { bytes } = await downloadOffImage(off.imageUrl, left() - 2_000);
-      return { bytes: Buffer.from(bytes), source: "off", offCode: off.code };
+      return { bytes: Buffer.from(bytes), source: "off", sourceUrl, offCode: off.code };
     } catch {
       failedOff.add(off.imageUrl);
       return null;
@@ -102,16 +108,19 @@ async function find(input: z.infer<typeof Body>, householdId: string): Promise<F
   }
   for (const phrase of phrases) {
     if (left() < 10_000) break;
-    const [off] = await searchByName(phrase, 3, true, input.aisle ?? null).catch(() => []);
-    const hit = await offPicture(off);
-    if (hit) return hit;
+    // A few good matches, so a rejected picture gives way to the next best.
+    for (const off of await searchByName(phrase, 3, true, input.aisle ?? null).catch(() => [])) {
+      const hit = await offPicture(off);
+      if (hit) return hit;
+    }
   }
   for (const phrase of phrases) {
     if (left() < 8_000) break;
-    for (const url of await searchCommons(phrase).catch(() => [])) {
+    for (const img of await searchCommons(phrase).catch(() => [])) {
       if (left() < 5_000) break;
-      const bytes = await fromUrl(url, Math.min(12_000, left() - 2_000));
-      if (bytes) return { bytes, source: "commons" };
+      if (rejected.has(img.page)) continue;
+      const bytes = await fromUrl(img.thumb, Math.min(12_000, left() - 2_000));
+      if (bytes) return { bytes, source: "commons", sourceUrl: img.page };
     }
   }
   if (input.allowWeb !== false && left() >= WEB_STEP_MIN_MS && (await underMonthlyCap(householdId))) {
@@ -123,10 +132,11 @@ async function find(input: z.infer<typeof Body>, householdId: string): Promise<F
       ]
         .filter(Boolean)
         .join(", ");
-      for (const url of await webPictureCandidates(input.name, context || null, left() - 8_000)) {
+      for (const found of await webPictureCandidates(input.name, context || null, left() - 8_000)) {
         if (left() < 4_000) break;
-        const bytes = await fromUrl(url, Math.min(12_000, left() - 2_000));
-        if (bytes) return { bytes, source: "web" };
+        if (rejected.has(found.page)) continue;
+        const bytes = await fromUrl(found.image, Math.min(12_000, left() - 2_000));
+        if (bytes) return { bytes, source: "web", sourceUrl: found.page };
       }
     } catch (err) {
       console.error("web picture search failed", err);
@@ -158,5 +168,11 @@ export async function POST(req: Request) {
     console.error("picture upload failed", error);
     return Response.json({ error: "Couldn't save the picture." }, { status: 500 });
   }
-  return Response.json({ found: true, path, source: found.source, offCode: found.offCode ?? null });
+  return Response.json({
+    found: true,
+    path,
+    source: found.source,
+    sourceUrl: found.sourceUrl,
+    offCode: found.offCode ?? null,
+  });
 }

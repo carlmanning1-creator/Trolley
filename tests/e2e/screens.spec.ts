@@ -56,7 +56,11 @@ test("main screens pass an accessibility check in light and dark mode", async ({
   await page.getByRole("button", { name: "Staples" }).click();
   await expectAccessible(page, "staples");
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Receipts" }).click();
+  await page.getByRole("button", { name: /^Running low/ }).click();
+  await expectAccessible(page, "running low");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: /Scan or review receipts/ }).click();
   await expectAccessible(page, "receipts");
 });
 

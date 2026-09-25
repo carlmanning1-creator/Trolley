@@ -11,6 +11,7 @@ import { Settings } from "@/components/Settings";
 import { NotificationSettings } from "@/components/NotificationSettings";
 import { PictureEditor } from "@/components/PictureEditor";
 import { ReceiptsSheet } from "@/components/ReceiptsSheet";
+import { RunningLowSheet } from "@/components/RunningLowSheet";
 import { ScanSheet } from "@/components/ScanSheet";
 import { ShoppingBar } from "@/components/ShoppingBar";
 import { StaplesSheet } from "@/components/StaplesSheet";
@@ -25,6 +26,7 @@ import {
   usePendingCount,
   useProducts,
   useProfiles,
+  useRunningLow,
   useSyncStatus,
 } from "@/lib/hooks";
 import { processPendingReceipts } from "@/lib/receipts";
@@ -60,7 +62,7 @@ export function App({ mode = "phone" }: { mode?: "phone" | "kiosk" }) {
   return <Main key={userId} mode={mode} />;
 }
 
-type Overlay = null | "settings" | "lists" | "staples" | "scan" | "receipts";
+type Overlay = null | "settings" | "lists" | "staples" | "scan" | "receipts" | "running-low";
 
 function Main({ mode }: { mode: "phone" | "kiosk" }) {
   const { session, profile: authProfile, signOut } = useAuth();
@@ -89,6 +91,8 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
   const loadedItems = useItems(activeList?.id ?? null);
   const items = useMemo(() => loadedItems ?? [], [loadedItems]);
   const sessions = useActiveSessions(activeList?.id ?? null);
+  const suggestions = useRunningLow(activeList?.id ?? null) ?? [];
+  const dueCount = suggestions.filter((s) => !s.onList).length;
   const pending = usePendingCount();
   const mySession = sessions.find((s) => s.started_by === actor.userId);
   // While I'm shopping, things other people add after I started get highlighted.
@@ -173,11 +177,11 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
     );
   }
 
-  const nav: { key: string; label: string; icon: string; onClick: () => void }[] = [
+  const nav: { key: string; label: string; icon: string; onClick: () => void; badge?: number }[] = [
     { key: "lists", label: "Lists", icon: "📋", onClick: () => setOverlay("lists") },
     { key: "scan", label: "Scan", icon: "📷", onClick: () => setOverlay("scan") },
     { key: "staples", label: "Staples", icon: "⭐", onClick: () => setOverlay("staples") },
-    { key: "receipts", label: "Receipts", icon: "🧾", onClick: () => setOverlay("receipts") },
+    { key: "running-low", label: "Running low", icon: "⏳", onClick: () => setOverlay("running-low"), badge: dueCount },
     { key: "settings", label: "Settings", icon: "⚙️", onClick: () => setOverlay("settings") },
   ];
 
@@ -239,6 +243,21 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
       </header>
 
       <main className={`flex-1 px-4 pt-2 ${kiosk ? "pb-8" : "pb-28"}`}>
+        {!kiosk && !mySession && dueCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setOverlay("running-low")}
+            className="mb-3 flex min-h-11 w-full items-center gap-2 rounded-xl bg-surface-2 px-3 text-left text-sm font-medium"
+          >
+            <span aria-hidden>⏳</span>
+            <span className="flex-1">
+              {dueCount === 1 ? "1 thing might be running low" : `${dueCount} things might be running low`}
+            </span>
+            <span aria-hidden className="text-brand-strong">
+              See →
+            </span>
+          </button>
+        )}
         <ListView
           actor={actor}
           list={activeList}
@@ -267,10 +286,16 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
                   onClick={n.onClick}
                   className="flex min-h-16 w-full flex-col items-center justify-center gap-0.5 text-sm font-medium"
                 >
-                  <span aria-hidden className="text-xl">
+                  <span aria-hidden className="relative text-xl">
                     {n.icon}
+                    {n.badge ? (
+                      <span className="absolute -top-1 -right-3 min-w-5 rounded-full bg-brand px-1 text-center text-xs font-bold text-brand-contrast">
+                        {n.badge}
+                      </span>
+                    ) : null}
                   </span>
-                  {n.label}
+                  <span className="leading-tight">{n.label}</span>
+                  {n.badge ? <span className="sr-only">, {n.badge} suggested</span> : null}
                 </button>
               </li>
             ))}
@@ -319,6 +344,17 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
         onAdded={onAdded}
       />
 
+      <RunningLowSheet
+        open={overlay === "running-low"}
+        onClose={closeOverlay}
+        actor={actor}
+        listId={activeList.id}
+        listName={activeList.name}
+        aisles={aisles}
+        suggestions={suggestions}
+        onAdded={onAdded}
+      />
+
       <ReceiptsSheet open={overlay === "receipts"} onClose={closeOverlay} actor={actor} listId={activeList.id} />
 
       <StaplesSheet
@@ -348,13 +384,14 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
         actor={actor}
         profile={profiles.get(actor.userId)}
         onSignOut={() => void signOut()}
+        onOpenReceipts={() => setOverlay("receipts")}
         notifications={<NotificationSettings householdId={actor.householdId} userId={actor.userId} />}
       />
     </div>
   );
 }
 
-// Picture and staple controls under the item editor: these belong to the product, so they
+// Picture, staple and Running low controls under the item editor: these belong to the product, so they
 // carry over to every list the product is on.
 function ItemExtras({ product, aisle }: { product: ProductRow; aisle: AisleRow | undefined }) {
   return (
@@ -370,6 +407,18 @@ function ItemExtras({ product, aisle }: { product: ProductRow; aisle: AisleRow |
         <span>
           <span className="font-medium">Staple</span>
           <span className="block text-sm text-muted">Keep it on the Staples sheet for one-tap adding</span>
+        </span>
+      </label>
+      <label className="flex min-h-11 items-center gap-3">
+        <input
+          type="checkbox"
+          checked={!product.hide_running_low}
+          onChange={(e) => void updateProduct(product, { hide_running_low: !e.target.checked })}
+          className="h-5 w-5 accent-[var(--brand)]"
+        />
+        <span>
+          <span className="font-medium">Suggest when running low</span>
+          <span className="block text-sm text-muted">Offer it on Running low when it&apos;s usually due</span>
         </span>
       </label>
     </>

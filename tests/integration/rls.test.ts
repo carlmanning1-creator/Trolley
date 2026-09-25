@@ -24,6 +24,7 @@ const TABLES = [
   "push_subscriptions",
   "receipts",
   "receipt_lines",
+  "purchases",
 ] as const;
 
 const admin = createClient(url, secret, { auth: { persistSession: false, autoRefreshToken: false } });
@@ -110,6 +111,11 @@ beforeAll(async () => {
   await admin
     .from("receipt_lines")
     .insert({ receipt_id: manningReceiptId, household_id: MANNING, description: "RLS test line" })
+    .throwOnError();
+  // Removed with the test product (purchases go when their product does).
+  await admin
+    .from("purchases")
+    .insert({ household_id: MANNING, product_id: manningProductId, bought_by: insiderId, bought_at: new Date().toISOString() })
     .throwOnError();
   const png = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",

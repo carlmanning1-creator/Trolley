@@ -5,7 +5,8 @@ import { db } from "@/lib/db";
 import { aisleForName } from "@/lib/keywords";
 import { parseItem } from "@/lib/parse";
 import { patchLocal, saveLocal } from "@/lib/sync";
-import type { AisleRow, ListItemRow, ListRow, ProductRow, ProfileRow } from "@/lib/types";
+import { isActive } from "@/lib/trips";
+import type { AisleRow, ListItemRow, ListRow, ProductRow, ProfileRow, PurchaseRow } from "@/lib/types";
 
 export const nowIso = () => new Date().toISOString();
 export const newId = () => crypto.randomUUID();
@@ -146,8 +147,12 @@ export async function addItem(
   return { item, product, status: "added" };
 }
 
+// An untick this soon after the tick is taken as a correction, so the purchase is taken back.
+const UNTICK_UNDOES_WITHIN_MS = 24 * 60 * 60 * 1000;
+
 // Ticking only touches the tick fields, so it never overwrites someone else's edit to the name
-// or note. The server keeps whichever tick or untick happened last.
+// or note. The server keeps whichever tick or untick happened last. Each tick is also kept as
+// a purchase, which is what Running low learns from.
 export async function setChecked(actor: Actor, item: ListItemRow, checked: boolean): Promise<void> {
   const t = nowIso();
   await patchLocal<ListItemRow>("list_items", item.id, {
@@ -156,6 +161,38 @@ export async function setChecked(actor: Actor, item: ListItemRow, checked: boole
     checked_at: checked ? t : null,
     check_changed_at: t,
   });
+  if (checked) await recordPurchase(actor, item, t);
+  else await takeBackPurchase(item.id, t);
+}
+
+async function recordPurchase(actor: Actor, item: ListItemRow, at: string) {
+  if (!item.product_id) return;
+  const trips = await db().shopping_sessions.where("list_id").equals(item.list_id).toArray();
+  const trip = trips.find((s) => isActive(s));
+  const purchase: PurchaseRow = {
+    id: newId(),
+    household_id: actor.householdId,
+    product_id: item.product_id,
+    list_item_id: item.id,
+    list_id: item.list_id,
+    session_id: trip?.id ?? null,
+    bought_by: actor.userId,
+    bought_at: at,
+    created_at: at,
+    updated_at: at,
+    deleted_at: null,
+  };
+  await saveLocal("purchases", purchase);
+}
+
+async function takeBackPurchase(listItemId: string, at: string) {
+  const since = Date.parse(at) - UNTICK_UNDOES_WITHIN_MS;
+  const recent = await db()
+    .purchases.where("list_item_id")
+    .equals(listItemId)
+    .filter((p) => !p.deleted_at && Date.parse(p.bought_at) >= since)
+    .toArray();
+  for (const p of recent) await patchLocal<PurchaseRow>("purchases", p.id, { deleted_at: at, updated_at: at });
 }
 
 // Returns the item's product when a rename moved it to a different one, so the caller can

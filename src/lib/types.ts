@@ -51,6 +51,9 @@ export type ProductRow = Stamps & {
   default_unit: string | null;
   times_bought: number;
   last_bought_at: string | null;
+  image_source_url?: string | null; // the page the picture came from (Open Food Facts, Commons, a website)
+  rejected_sources?: string[]; // pictures someone marked as wrong, never offered again
+  hide_running_low?: boolean; // "Don't suggest this" on Running low
   deleted_at: string | null;
 };
 
@@ -83,6 +86,19 @@ export type ShoppingSessionRow = Stamps & {
   ended_at: string | null;
 };
 
+// One ticked-off item: the history Running low learns from.
+export type PurchaseRow = Stamps & {
+  id: string;
+  household_id: string;
+  product_id: string;
+  list_item_id: string | null;
+  list_id: string | null;
+  session_id: string | null;
+  bought_by: string | null;
+  bought_at: string;
+  deleted_at: string | null;
+};
+
 // Tables mirrored on the device, in the order the outbox must push them
 // (a list item can only reach the server after its list, aisle and product).
 // Aisles come before lists so that by the time a list shows on a new device, new items can be sorted.
@@ -93,6 +109,7 @@ export const SYNCED_TABLES = [
   "products",
   "list_items",
   "shopping_sessions",
+  "purchases",
 ] as const;
 
 export type SyncedTable = (typeof SYNCED_TABLES)[number];
@@ -107,6 +124,8 @@ export type RowFor<T extends SyncedTable> = T extends "profiles"
         ? ProductRow
         : T extends "list_items"
           ? ListItemRow
-          : ShoppingSessionRow;
+          : T extends "shopping_sessions"
+            ? ShoppingSessionRow
+            : PurchaseRow;
 
-export type AnyRow = ProfileRow | ListRow | AisleRow | ProductRow | ListItemRow | ShoppingSessionRow;
+export type AnyRow = ProfileRow | ListRow | AisleRow | ProductRow | ListItemRow | ShoppingSessionRow | PurchaseRow;
