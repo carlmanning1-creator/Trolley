@@ -8,8 +8,8 @@ import type { AisleRow, ListItemRow, ProductRow, ProfileRow } from "@/lib/types"
 const LONG_PRESS_MS = 500;
 const SWIPE_PX = 80;
 
-// One line on the list. Tap or swipe right to tick, swipe left to delete (with Undo),
-// long-press or the ⋯ button to edit.
+// One line on the list. Tap to tick; long-press or the ⋯ button to edit. For people who have
+// swipes on (Settings), swipe right also ticks and swipe left deletes (with Undo).
 export function ItemRow({
   item,
   product,
@@ -18,6 +18,7 @@ export function ItemRow({
   highlight,
   large,
   shopping,
+  swipe = true,
   duplicate,
   onToggle,
   onEdit,
@@ -31,6 +32,7 @@ export function ItemRow({
   highlight?: boolean;
   large?: boolean;
   shopping?: boolean;
+  swipe?: boolean; // the person's setting: swipe to tick or delete
   duplicate?: boolean;
   onToggle: () => void;
   onEdit: () => void;
@@ -70,7 +72,7 @@ export function ItemRow({
       suppressClick.current = true;
     }
     // Only track clearly sideways drags, so scrolling the list still works.
-    if (Math.abs(mx) > Math.abs(my) && Math.abs(mx) > 10) setDx(Math.max(-120, Math.min(120, mx)));
+    if (swipe && Math.abs(mx) > Math.abs(my) && Math.abs(mx) > 10) setDx(Math.max(-120, Math.min(120, mx)));
   }
 
   function up() {

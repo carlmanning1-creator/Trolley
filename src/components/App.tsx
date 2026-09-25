@@ -289,6 +289,7 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
           items={items}
           aisles={storeAisles ?? aisles}
           shopping={Boolean(mySession)}
+          swipe={profiles.get(actor.userId)?.swipe_actions ?? true}
           products={products}
           profiles={profiles}
           large={kiosk}

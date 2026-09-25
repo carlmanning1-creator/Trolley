@@ -18,6 +18,7 @@ export function ListView({
   highlightIds,
   large = false,
   shopping = false,
+  swipe = true,
   columns = 1,
   onEdit,
   onDuplicates,
@@ -31,6 +32,7 @@ export function ListView({
   highlightIds?: Set<string>;
   large?: boolean;
   shopping?: boolean; // bigger ticks while at the shops
+  swipe?: boolean; // swipe to tick or delete
   columns?: 1 | 2 | 3;
   onEdit: (item: ListItemRow) => void;
   onDuplicates?: (ids: string[]) => void;
@@ -54,6 +56,7 @@ export function ListView({
       highlight={highlightIds?.has(item.id)}
       large={large}
       shopping={shopping}
+      swipe={swipe}
       duplicate={duplicates.has(item.id)}
       onToggle={() => void setChecked(actor, item, !item.checked)}
       onEdit={() => onEdit(item)}

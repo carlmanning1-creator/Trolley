@@ -7,7 +7,7 @@
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { db, getMeta, setMeta, type OutboxEntry } from "@/lib/db";
 import { supabase } from "@/lib/supabase";
-import { SYNCED_TABLES, type AnyRow, type SyncedTable } from "@/lib/types";
+import { SYNCED_TABLES, type AnyRow, type ProfileRow, type SyncedTable } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
 // Status, readable from React with useSyncStatus()
@@ -233,10 +233,15 @@ export async function flush(): Promise<void> {
         if (table === "profiles") {
           // People can edit their own profile but never create one, so this is an update.
           for (const r of rows) {
-            const p = r as AnyRow & { display_name: string; colour: string };
+            const p = r as ProfileRow;
             const res = await sb
               .from("profiles")
-              .update({ display_name: p.display_name, colour: p.colour, updated_at: p.updated_at })
+              .update({
+                display_name: p.display_name,
+                colour: p.colour,
+                swipe_actions: p.swipe_actions ?? true,
+                updated_at: p.updated_at,
+              })
               .eq("id", p.id)
               .select();
             if (res.error) {

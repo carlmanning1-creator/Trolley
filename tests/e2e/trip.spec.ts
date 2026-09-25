@@ -148,8 +148,15 @@ test("deleting an item can be undone", async ({ page }) => {
   expect(data?.deleted_at).toBeNull();
 });
 
+// The item's centre, scrolled to the middle of the screen (clear of the bottom bar).
+async function centreOf(page: Page, name: string) {
+  const target = item(page, name).getByRole("checkbox");
+  await target.evaluate((el) => el.scrollIntoView({ block: "center" }));
+  return (await target.boundingBox())!;
+}
+
 async function swipe(page: Page, name: string, dx: number) {
-  const box = (await item(page, name).getByRole("checkbox").boundingBox())!;
+  const box = await centreOf(page, name);
   const y = box.y + box.height / 2;
   const x = box.x + box.width / 2;
   await page.mouse.move(x, y);
@@ -180,4 +187,34 @@ test("swipe right ticks, swipe left deletes with Undo, and your own items carry 
   await swipe(page, "Honey", 30);
   await expect(item(page, "Honey")).toHaveAttribute("data-checked", "false");
   await synced(page);
+});
+
+test("swipes can be turned off in Settings, just for that person", async ({ page }) => {
+  await signInThroughUi(page, person);
+  await add(page, "Walnuts");
+  // Let it settle into its aisle first, so it doesn't move under the finger.
+  await synced(page);
+  await expect(page.getByRole("heading", { name: /Not sorted yet/ })).toHaveCount(0, { timeout: 20_000 });
+  await page.getByRole("button", { name: "Settings" }).click();
+  const setting = page.getByLabel(/Swipe to tick or delete/);
+  await expect(setting).toBeChecked();
+  await setting.click();
+  await expect(setting).not.toBeChecked();
+  await page.keyboard.press("Escape");
+
+  await swipe(page, "Walnuts", 140);
+  await swipe(page, "Walnuts", -140);
+  await expect(item(page, "Walnuts")).toHaveAttribute("data-checked", "false");
+  // Long press still opens the editor.
+  const box = await centreOf(page, "Walnuts");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(700);
+  await page.mouse.up();
+  await expect(page.getByRole("heading", { name: "Edit item" })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  await synced(page);
+  const { data } = await admin.from("profiles").select("swipe_actions").eq("id", person.id).single();
+  expect(data?.swipe_actions).toBe(false);
 });

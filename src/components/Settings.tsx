@@ -149,6 +149,20 @@ function ProfileEditor({ profile }: { profile: ProfileRow }) {
           ))}
         </div>
       </fieldset>
+      <label className="flex min-h-11 items-center gap-3">
+        <input
+          type="checkbox"
+          checked={profile.swipe_actions ?? true}
+          onChange={(e) => void updateProfile(profile, { swipe_actions: e.target.checked })}
+          className="h-5 w-5 accent-[var(--brand)]"
+        />
+        <span>
+          <span className="font-medium">Swipe to tick or delete</span>
+          <span className="block text-sm text-muted">
+            Swipe an item right to tick it, left to delete it. Just for you, on every device you use.
+          </span>
+        </span>
+      </label>
     </div>
   );
 }
