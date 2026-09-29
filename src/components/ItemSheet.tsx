@@ -25,16 +25,18 @@ export function ItemSheet({
   aisles,
   onClose,
   extra,
+  compare,
 }: {
   actor: Actor;
   item: ListItemRow | null;
   aisles: AisleRow[];
   onClose: () => void;
   extra?: React.ReactNode;
+  compare?: React.ReactNode; // "Compare prices", for products with a barcode
 }) {
   return (
     <Sheet open={Boolean(item)} onClose={onClose} title="Edit item">
-      {item && <ItemForm key={item.id} actor={actor} item={item} aisles={aisles} onClose={onClose} extra={extra} />}
+      {item && <ItemForm key={item.id} actor={actor} item={item} aisles={aisles} onClose={onClose} extra={extra} compare={compare} />}
     </Sheet>
   );
 }
@@ -45,12 +47,14 @@ function ItemForm({
   aisles,
   onClose,
   extra,
+  compare,
 }: {
   actor: Actor;
   item: ListItemRow;
   aisles: AisleRow[];
   onClose: () => void;
   extra?: React.ReactNode;
+  compare?: React.ReactNode; // "Compare prices", for products with a barcode
 }) {
   const [name, setName] = useState(item.name);
   const [quantity, setQuantity] = useState(item.quantity === null ? "" : String(item.quantity));
@@ -170,6 +174,7 @@ function ItemForm({
           className={field}
         />
       </div>
+      {compare}
       <div className="flex gap-3 pt-2">
         <button
           type="button"

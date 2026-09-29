@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { ComparePrices } from "@/components/ComparePrices";
 import { ProductThumb } from "@/components/ProductThumb";
 import { Sheet } from "@/components/Sheet";
 import { autoSortProduct } from "@/lib/autosort";
@@ -396,6 +397,11 @@ function Result({
           <p className="text-sm text-muted">Barcode {found.barcode}</p>
         </div>
       </div>
+      <ComparePrices
+        barcode={found.barcode}
+        name={found.kind === "off" ? name.trim() || found.off.name : product!.name}
+        known={found.kind === "off" ? { name: found.off.name, brand: found.off.brand, quantity: found.off.quantity } : undefined}
+      />
       <button type="submit" disabled={busy} className={primary}>
         Add to list
       </button>

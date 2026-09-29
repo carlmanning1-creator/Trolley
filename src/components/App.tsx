@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AddBar } from "@/components/AddBar";
 import { useAuth } from "@/components/AuthProvider";
+import { ComparePrices } from "@/components/ComparePrices";
 import { DuplicateSheet } from "@/components/DuplicateSheet";
 import { ItemSheet } from "@/components/ItemSheet";
 import { ListView } from "@/components/ListView";
@@ -346,6 +347,11 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
         item={liveEditing}
         aisles={aisles}
         onClose={closeEditor}
+        compare={
+          editingProduct?.barcode && liveEditing ? (
+            <ComparePrices barcode={editingProduct.barcode} name={liveEditing.name} />
+          ) : undefined
+        }
         extra={
           editingProduct && (
             <ItemExtras

@@ -83,7 +83,7 @@ test("an unknown barcode gets named once and is known next time", async ({ page 
   await page.getByRole("button", { name: "Scan" }).click();
   await page.getByLabel("Barcode number").fill(UNKNOWN);
   await page.getByRole("button", { name: "Look up" }).click();
-  await expect(page.getByText("Mystery sauce")).toBeVisible();
+  await expect(page.getByText("Mystery sauce", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Add to list" }).click();
   await expect(item(page, "Mystery sauce")).toHaveAttribute("data-checked", "false");
   await expect.poll(async () => (await product("Mystery sauce"))?.barcode, { timeout: 15_000 }).toBe(UNKNOWN);
@@ -140,4 +140,26 @@ test("phones with a built-in barcode reader use it", async ({ page }) => {
   await signInThroughUi(page, person);
   await page.getByRole("button", { name: "Scan" }).click();
   await expect(page.getByText("Barcode 9300601000013")).toBeVisible({ timeout: 20_000 });
+});
+
+test("barcoded items offer Compare prices; others don't", async ({ page }) => {
+  await signInThroughUi(page, person);
+  const vegemite = page.locator('[data-testid="list-item"]').filter({ hasText: /Vegemite/i });
+  await vegemite.getByRole("button", { name: /^Edit/ }).click();
+  const compare = page.getByRole("region", { name: "Compare prices" });
+  await expect(compare).toBeVisible();
+  await expect(compare.getByRole("link", { name: "Woolworths" })).toHaveAttribute(
+    "href",
+    /^https:\/\/www\.woolworths\.com\.au\/shop\/search\/products\?searchTerm=.*Vegemite/i,
+  );
+  await expect(compare.getByRole("link", { name: "Coles" })).toHaveAttribute("href", /^https:\/\/www\.coles\.com\.au\/search\/products\?q=.*Vegemite/i);
+  await expect(compare.getByRole("link", { name: "Side by side" })).toHaveAttribute("href", /^https:\/\/trolleychecker\.com\.au\/search\?q=.*Vegemite/i);
+  await expect(compare.getByRole("link", { name: "Coles" })).toHaveAttribute("target", "_blank");
+  await page.keyboard.press("Escape");
+
+  await page.getByLabel("Add an item").fill("Paper towel");
+  await page.getByLabel("Add an item").press("Enter");
+  await page.getByRole("button", { name: "Edit Paper towel" }).click();
+  await expect(page.getByRole("heading", { name: "Edit item" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Compare prices" })).toHaveCount(0);
 });
