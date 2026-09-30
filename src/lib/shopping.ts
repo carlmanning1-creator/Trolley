@@ -31,6 +31,13 @@ export async function finishShopping(session: ShoppingSessionRow): Promise<void>
   await patchLocal<ShoppingSessionRow>("shopping_sessions", session.id, { ended_at: t, updated_at: t });
 }
 
+// "Tell everyone" after flagging something as needed soon: only when someone asks for it.
+// Queued like the others, so it goes once the flag has reached the server.
+export async function noticeNeededSoon(itemId: string): Promise<void> {
+  await setMeta(`notify-flag:${itemId}`, `pending|${nowIso()}`);
+  void sendPendingNotices();
+}
+
 // Tells the shopper someone added something. Queued, so it still goes if you add it offline.
 export async function noticeItemAdded(itemId: string): Promise<void> {
   await setMeta(`notify-item:${itemId}`, `pending|${nowIso()}`);
@@ -45,7 +52,7 @@ export async function sendPendingNotices(): Promise<void> {
   sending = true;
   try {
     const pending = (await db().meta.toArray()).filter(
-      (m) => m.value.startsWith("pending|") && (m.key.startsWith("notify-start:") || m.key.startsWith("notify-item:")),
+      (m) => m.value.startsWith("pending|") && /^notify-(start|item|flag):/.test(m.key),
     );
     for (const m of pending) {
       const [kind, id] = m.key.split(":");
@@ -55,7 +62,12 @@ export async function sendPendingNotices(): Promise<void> {
       try {
         await callApi("/api/push/notify", {
           method: "POST",
-          json: kind === "notify-start" ? { event: "shopping-started", sessionId: id } : { event: "item-added", itemId: id },
+          json:
+            kind === "notify-start"
+              ? { event: "shopping-started", sessionId: id }
+              : kind === "notify-flag"
+                ? { event: "needed-soon", itemId: id }
+                : { event: "item-added", itemId: id },
         });
         await db().meta.delete(m.key);
       } catch {

@@ -1,5 +1,6 @@
 "use client";
 
+import { useLiveQuery } from "dexie-react-hooks";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AddBar } from "@/components/AddBar";
 import { useAuth } from "@/components/AuthProvider";
@@ -21,7 +22,7 @@ import { StaplesSheet } from "@/components/StaplesSheet";
 import { StatusPill } from "@/components/StatusPill";
 import { WakeLock } from "@/components/WakeLock";
 import { APP_NAME } from "@/lib/config";
-import { openDb } from "@/lib/db";
+import { db, openDb } from "@/lib/db";
 import {
   useActiveSessions,
   useAisles,
@@ -30,6 +31,7 @@ import {
   usePendingCount,
   useProducts,
   useProfiles,
+  useNeededSoon,
   useRunningLow,
   useStoreAisleOrder,
   useSyncStatus,
@@ -99,6 +101,12 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
   const sessions = useActiveSessions(activeList?.id ?? null);
   const suggestions = useRunningLow(activeList?.id ?? null) ?? [];
   const dueCount = suggestions.filter((s) => !s.onList).length;
+  // Needed soon: flagged items on every list, and whether the list is showing only those.
+  const needed = useNeededSoon();
+  const [neededOnly, setNeededOnly] = useState(false);
+  // Nothing flagged any more: drop the filter, so the next flag doesn't open straight into it.
+  if (neededOnly && needed.length === 0) setNeededOnly(false);
+  const showNeeded = neededOnly && needed.length > 0;
   const pending = usePendingCount();
   const mySession = sessions.find((s) => s.started_by === actor.userId);
   // Whoever is at the shop (the shopper, or someone walking round with them) sees the list in
@@ -172,7 +180,9 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
   }
 
   // Keep the editor showing the latest version of the item if it changes elsewhere.
-  const liveEditing = editing ? (items.find((i) => i.id === editing.id) ?? null) : null;
+  // Read from the store by id: it may be on another list when opened from Needed soon.
+  const editingNow = useLiveQuery(async () => (editing ? await db().list_items.get(editing.id) : undefined), [editing?.id]);
+  const liveEditing = editing && editingNow && !editingNow.deleted_at ? editingNow : null;
   const editingProduct = liveEditing?.product_id ? products.get(liveEditing.product_id) : undefined;
 
   // The first time on a device, wait for the first full download so nothing gets added twice.
@@ -266,12 +276,32 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
           large={kiosk}
           controls={!kiosk}
           storeOrderLearned={Boolean(storeAisles)}
+          onStarted={() => {
+            // At the shops: lead with what people need soon.
+            if (needed.length === 0) return;
+            setNeededOnly(true);
+            notify(`${needed.length} ${needed.length === 1 ? "item is" : "items are"} needed soon`);
+          }}
           onScanReceipt={() => setOverlay("receipts")}
         />
+        {needed.length > 0 && (
+          <button
+            type="button"
+            aria-pressed={showNeeded}
+            onClick={() => setNeededOnly((on) => !on)}
+            className={`flex min-h-11 items-center justify-center gap-2 self-start rounded-full border-2 px-4 font-semibold ${
+              showNeeded ? "border-needed bg-needed text-background" : "border-needed bg-needed-bg text-needed"
+            } ${kiosk ? "text-xl" : ""}`}
+          >
+            <span aria-hidden>⚡</span>
+            Needed soon ({needed.length})
+            {showNeeded && <span className="font-normal">· show everything</span>}
+          </button>
+        )}
       </header>
 
       <main className={`flex-1 px-4 pt-2 ${kiosk ? "pb-8" : "pb-28"}`}>
-        {!kiosk && !mySession && dueCount > 0 && (
+        {!kiosk && !mySession && !showNeeded && dueCount > 0 && (
           <button
             type="button"
             onClick={() => setOverlay("running-low")}
@@ -286,21 +316,48 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
             </span>
           </button>
         )}
-        <ListView
-          actor={actor}
-          list={activeList}
-          items={items}
-          aisles={storeAisles ?? aisles}
-          shopping={Boolean(mySession)}
-          swipe={profiles.get(actor.userId)?.swipe_actions ?? true}
-          products={products}
-          profiles={profiles}
-          large={kiosk}
-          columns={kiosk ? 3 : 2}
-          highlightIds={highlightIds}
-          onDuplicates={setDupIds}
-          onEdit={setEditing}
-        />
+        {showNeeded ? (
+          // Everything needed soon, on every list, each in its usual order.
+          lists
+            .filter((l) => needed.some((n) => n.list_id === l.id))
+            .map((l) => (
+              <section key={l.id} aria-label={`${l.name}, needed soon`} className="mb-6">
+                <h2 className={`mb-3 flex items-center gap-2 font-bold ${kiosk ? "text-3xl" : "text-xl"}`}>
+                  <span aria-hidden>{l.icon}</span>
+                  {l.name}
+                </h2>
+                <ListView
+                  actor={actor}
+                  list={l}
+                  items={needed.filter((n) => n.list_id === l.id)}
+                  aisles={aisles}
+                  products={products}
+                  profiles={profiles}
+                  large={kiosk}
+                  shopping={Boolean(mySession)}
+                  swipe={profiles.get(actor.userId)?.swipe_actions ?? true}
+                  columns={kiosk ? 3 : 2}
+                  onEdit={setEditing}
+                />
+              </section>
+            ))
+        ) : (
+          <ListView
+            actor={actor}
+            list={activeList}
+            items={items}
+            aisles={storeAisles ?? aisles}
+            shopping={Boolean(mySession)}
+            swipe={profiles.get(actor.userId)?.swipe_actions ?? true}
+            products={products}
+            profiles={profiles}
+            large={kiosk}
+            columns={kiosk ? 3 : 2}
+            highlightIds={highlightIds}
+            onDuplicates={setDupIds}
+            onEdit={setEditing}
+          />
+        )}
       </main>
 
       {!kiosk && (

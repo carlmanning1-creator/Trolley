@@ -70,6 +70,7 @@ export type ListItemRow = Stamps & {
   note: string | null;
   link: string | null;
   distinct_from?: string[];
+  needed_soon?: boolean; // flagged to grab next time anyone is at the shops
   added_by: string | null;
   checked: boolean;
   checked_by: string | null;
@@ -104,7 +105,17 @@ export type PurchaseRow = Stamps & {
 };
 
 // One thing that happened to a list item, for History.
-export type ItemEventKind = "added" | "readded" | "ticked" | "unticked" | "deleted" | "cleared" | "restored" | "merged";
+export type ItemEventKind =
+  | "added"
+  | "readded"
+  | "ticked"
+  | "unticked"
+  | "deleted"
+  | "cleared"
+  | "restored"
+  | "merged"
+  | "flagged"
+  | "unflagged";
 export type ItemEventRow = Stamps & {
   id: string;
   household_id: string;

@@ -103,16 +103,19 @@ export function ItemRow({
   }
 
   const qty = formatQuantity(item.quantity, item.unit);
+  // Once it's in the trolley it's no longer needed, whatever the flag says.
+  const needed = Boolean(item.needed_soon) && !item.checked;
   const initial = addedBy?.display_name?.charAt(0).toUpperCase() ?? "?";
 
   return (
     <li
       className={`relative overflow-hidden rounded-2xl ${highlight ? "ring-2 ring-amber-400" : ""} ${
-        duplicate ? "border-l-4 border-amber-400" : ""
+        needed ? "border-l-[6px] border-needed" : duplicate ? "border-l-4 border-amber-400" : ""
       }`}
       data-testid="list-item"
       data-name={item.name}
       data-checked={item.checked}
+      data-needed-soon={needed}
     >
       <div
         aria-hidden
@@ -130,7 +133,7 @@ export function ItemRow({
           type="button"
           role="checkbox"
           aria-checked={item.checked}
-          aria-label={`${item.name}${qty ? `, ${qty}` : ""}${item.checked ? ", in the trolley" : ""}`}
+          aria-label={`${item.name}${qty ? `, ${qty}` : ""}${needed ? ", needed soon" : ""}${item.checked ? ", in the trolley" : ""}`}
           onPointerDown={down}
           onPointerMove={move}
           onPointerUp={up}
@@ -157,6 +160,11 @@ export function ItemRow({
                 item.checked ? "text-muted line-through" : ""
               }`}
             >
+              {needed && (
+                <span aria-hidden className="mr-1.5 font-bold text-needed">
+                  ⚡
+                </span>
+              )}
               {item.name}
               {qty && <span className="ml-2 font-normal text-muted">{qty}</span>}
             </span>

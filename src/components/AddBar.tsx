@@ -4,6 +4,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useMemo, useRef, useState, type FormEvent } from "react";
 import { db } from "@/lib/db";
 import { addItem, normaliseName, type Actor, type AddResult } from "@/lib/mutations";
+import { offerToTellEveryone, readNeededSoon } from "@/lib/neededSoon";
 import { parseItem } from "@/lib/parse";
 import type { ProductRow } from "@/lib/types";
 
@@ -21,6 +22,7 @@ export function AddBar({
 }) {
   const [text, setText] = useState("");
   const [focused, setFocused] = useState(false);
+  const [flag, setFlag] = useState(false); // ⚡ needed soon, for the next thing added
   const input = useRef<HTMLInputElement>(null);
 
   const products = useLiveQuery(() => db().products.toArray(), []);
@@ -58,18 +60,23 @@ export function AddBar({
   async function submit(e?: FormEvent, product?: ProductRow) {
     e?.preventDefault();
     // Read straight from the box and clear it before saving, so fast typing never loses an item.
-    const value = (input.current?.value ?? text).trim();
+    const typed = readNeededSoon(input.current?.value ?? text);
+    const value = typed.text;
+    const neededSoon = flag || typed.neededSoon;
     if (!product && !value) return;
     setText("");
+    setFlag(false);
     if (input.current) input.current.value = "";
     input.current?.focus();
     const parsed = parseItem(value);
     const result = await addItem(
       actor,
       listId,
-      product ? { product, quantity: parsed.quantity, unit: parsed.unit } : { text: value },
+      product ? { product, quantity: parsed.quantity, unit: parsed.unit, neededSoon } : { text: value, neededSoon },
     );
-    if (result) onAdded(result);
+    if (!result) return;
+    onAdded(result);
+    if (neededSoon) offerToTellEveryone(result.item);
   }
 
   const showSuggestions = focused && suggestions.length > 0;
@@ -88,7 +95,7 @@ export function AddBar({
           autoComplete="off"
           autoCorrect="on"
           autoCapitalize="sentences"
-          placeholder="Add an item, e.g. 2 milk"
+          placeholder={flag ? "Add something needed soon" : "Add an item, e.g. 2 milk"}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onFocus={() => setFocused(true)}
@@ -97,6 +104,19 @@ export function AddBar({
             large ? "min-h-16 text-2xl" : "min-h-12 text-lg"
           }`}
         />
+        <button
+          type="button"
+          aria-pressed={flag}
+          aria-label="Needed soon"
+          title="Needed soon: grab it next time anyone is at the shops"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => setFlag((f) => !f)}
+          className={`shrink-0 rounded-2xl border-2 ${flag ? "border-needed bg-needed text-background" : "border-border text-muted"} ${
+            large ? "min-h-16 min-w-16 text-2xl" : "min-h-12 min-w-12 text-lg"
+          }`}
+        >
+          ⚡
+        </button>
         <button
           type="submit"
           aria-label="Add"

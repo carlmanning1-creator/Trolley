@@ -116,7 +116,7 @@ export type AddResult = { item: ListItemRow; product: ProductRow; status: "added
 export async function addItem(
   actor: Actor,
   listId: string,
-  input: { text?: string; product?: ProductRow; quantity?: number | null; unit?: string | null },
+  input: { text?: string; product?: ProductRow; quantity?: number | null; unit?: string | null; neededSoon?: boolean },
 ): Promise<AddResult | null> {
   const parsed = input.text ? parseItem(input.text) : null;
   const name = input.product?.name ?? parsed?.name ?? "";
@@ -134,6 +134,8 @@ export async function addItem(
 
   const t = nowIso();
   if (existing && !existing.checked) {
+    // Already on the list: adding it again as needed soon flags the one that's there.
+    if (input.neededSoon && !existing.needed_soon) await setNeededSoon(actor, existing, true);
     return { item: existing, product, status: "already" };
   }
   if (existing && existing.checked) {
@@ -145,9 +147,11 @@ export async function addItem(
       quantity: quantity ?? cur.quantity,
       unit: unit ?? cur.unit,
       added_by: actor.userId,
+      needed_soon: Boolean(input.neededSoon),
       updated_at: t,
     }));
     await logEvent(actor, restored ?? existing, "readded", t);
+    if (input.neededSoon) await logEvent(actor, restored ?? existing, "flagged", t);
     return { item: restored ?? existing, product, status: "restored" };
   }
 
@@ -163,6 +167,7 @@ export async function addItem(
     note: null,
     link: null,
     distinct_from: [],
+    needed_soon: Boolean(input.neededSoon),
     added_by: actor.userId,
     checked: false,
     checked_by: null,
@@ -174,6 +179,7 @@ export async function addItem(
   };
   await saveLocal("list_items", item);
   await logEvent(actor, item, "added", t);
+  if (item.needed_soon) await logEvent(actor, item, "flagged", t);
   return { item, product, status: "added" };
 }
 
@@ -274,6 +280,13 @@ export async function updateItem(
     }
   }
   return null;
+}
+
+// "Needed soon": grab it next time anyone is at the shops.
+export async function setNeededSoon(actor: Actor, item: ListItemRow, on: boolean): Promise<void> {
+  const t = nowIso();
+  await patchLocal<ListItemRow>("list_items", item.id, { needed_soon: on, updated_at: t });
+  await logEvent(actor, item, on ? "flagged" : "unflagged", t);
 }
 
 export async function deleteItem(actor: Actor, item: ListItemRow): Promise<void> {

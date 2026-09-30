@@ -31,6 +31,7 @@ export function ShoppingBar({
   items,
   onScanReceipt,
   storeOrderLearned = false,
+  onStarted,
   large = false,
   controls = true,
 }: {
@@ -41,6 +42,7 @@ export function ShoppingBar({
   items: ListItemRow[];
   onScanReceipt?: () => void;
   storeOrderLearned?: boolean; // the list is in the order this store is usually walked
+  onStarted?: () => void;
   large?: boolean;
   controls?: boolean; // false on the kitchen screen: banner only
 }) {
@@ -61,6 +63,7 @@ export function ShoppingBar({
       // not remembered: fine
     }
     await startShopping(actor, list.id, store);
+    onStarted?.();
     // Asked right after the tap, as iPhones require. Declining is fine: shopping still works.
     try {
       const state = await enableNotifications(actor.householdId, actor.userId);

@@ -13,6 +13,8 @@ const VERBS: Record<ItemEventKind, string> = {
   cleared: "cleared",
   restored: "brought back",
   merged: "merged away",
+  flagged: "flagged as needed soon:",
+  unflagged: "took the needed soon flag off",
 };
 
 export function verb(kind: ItemEventKind): string {

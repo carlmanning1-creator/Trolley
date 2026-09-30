@@ -5,7 +5,8 @@ import { Sheet } from "@/components/Sheet";
 import { autoSortProduct } from "@/lib/autosort";
 import { db } from "@/lib/db";
 import { findPicture } from "@/lib/images";
-import { deleteItem, restoreItems, updateItem, type Actor } from "@/lib/mutations";
+import { deleteItem, restoreItems, setNeededSoon, updateItem, type Actor } from "@/lib/mutations";
+import { offerToTellEveryone } from "@/lib/neededSoon";
 import { notify } from "@/lib/notices";
 import type { AisleRow, ListItemRow } from "@/lib/types";
 
@@ -114,6 +115,27 @@ function ItemForm({
   const field = "min-h-12 w-full rounded-xl border border-border bg-background px-3 text-lg";
   return (
     <form onSubmit={save} className="flex flex-col gap-4">
+      <button
+        type="button"
+        aria-pressed={Boolean(item.needed_soon)}
+        onClick={async () => {
+          const on = !item.needed_soon;
+          await setNeededSoon(actor, item, on);
+          if (on) offerToTellEveryone(item);
+        }}
+        className={`flex min-h-12 items-center gap-3 rounded-xl border-2 px-3 text-left font-semibold ${
+          item.needed_soon ? "border-needed bg-needed-bg text-needed" : "border-border"
+        }`}
+      >
+        <span aria-hidden className="text-xl">
+          ⚡
+        </span>
+        <span className="flex-1">
+          Needed soon
+          <span className="block text-sm font-normal text-muted">Grab it next time anyone is at the shops</span>
+        </span>
+        <span aria-hidden>{item.needed_soon ? "On" : "Off"}</span>
+      </button>
       <div>
         <label htmlFor="item-name" className="mb-1 block font-medium">
           Name

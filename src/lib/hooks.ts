@@ -152,3 +152,11 @@ export function useStoreAisleOrder(store: Store | null | undefined, aisles: Aisl
     }, [store, aisles]) ?? null
   );
 }
+
+// Everything flagged "needed soon" that's still to buy, on every list.
+export function useNeededSoon(): ListItemRow[] {
+  return (
+    useLiveQuery(async () => (await db().list_items.toArray()).filter((i) => i.needed_soon && !i.checked && !i.deleted_at), []) ??
+    []
+  );
+}

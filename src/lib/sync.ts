@@ -168,7 +168,7 @@ export function isRejection(error: { status?: number } | null): boolean {
 
 // Columns added after launch: rows saved on the device before then don't have them.
 const COLUMN_DEFAULTS: Partial<Record<SyncedTable, Record<string, unknown>>> = {
-  list_items: { link: null, distinct_from: [] },
+  list_items: { link: null, distinct_from: [], needed_soon: false },
   products: { image_source_url: null, rejected_sources: [], hide_running_low: false },
   shopping_sessions: { store: null },
 };
