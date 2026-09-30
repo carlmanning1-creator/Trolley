@@ -25,18 +25,18 @@ export function ItemSheet({
   aisles,
   onClose,
   extra,
-  compare,
+  details,
 }: {
   actor: Actor;
   item: ListItemRow | null;
   aisles: AisleRow[];
   onClose: () => void;
   extra?: React.ReactNode;
-  compare?: React.ReactNode; // "Compare prices", for products with a barcode
+  details?: React.ReactNode; // last bought, compare prices
 }) {
   return (
     <Sheet open={Boolean(item)} onClose={onClose} title="Edit item">
-      {item && <ItemForm key={item.id} actor={actor} item={item} aisles={aisles} onClose={onClose} extra={extra} compare={compare} />}
+      {item && <ItemForm key={item.id} actor={actor} item={item} aisles={aisles} onClose={onClose} extra={extra} details={details} />}
     </Sheet>
   );
 }
@@ -47,14 +47,14 @@ function ItemForm({
   aisles,
   onClose,
   extra,
-  compare,
+  details,
 }: {
   actor: Actor;
   item: ListItemRow;
   aisles: AisleRow[];
   onClose: () => void;
   extra?: React.ReactNode;
-  compare?: React.ReactNode; // "Compare prices", for products with a barcode
+  details?: React.ReactNode; // last bought, compare prices
 }) {
   const [name, setName] = useState(item.name);
   const [quantity, setQuantity] = useState(item.quantity === null ? "" : String(item.quantity));
@@ -106,9 +106,9 @@ function ItemForm({
   }
 
   async function remove() {
-    await deleteItem(item);
+    await deleteItem(actor, item);
     onClose();
-    notify(`Deleted ${item.name}`, { label: "Undo", run: () => restoreItems([item.id]) });
+    notify(`Deleted ${item.name}`, { label: "Undo", run: () => restoreItems(actor, [item.id]) });
   }
 
   const field = "min-h-12 w-full rounded-xl border border-border bg-background px-3 text-lg";
@@ -174,7 +174,7 @@ function ItemForm({
           className={field}
         />
       </div>
-      {compare}
+      {details}
       <div className="flex gap-3 pt-2">
         <button
           type="button"

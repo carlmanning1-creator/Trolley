@@ -6,12 +6,40 @@ import { aisleForName } from "@/lib/keywords";
 import { parseItem } from "@/lib/parse";
 import { patchLocal, saveLocal } from "@/lib/sync";
 import { isActive } from "@/lib/trips";
-import type { AisleRow, ListItemRow, ListRow, ProductRow, ProfileRow, PurchaseRow } from "@/lib/types";
+import type {
+  AisleRow,
+  ItemEventKind,
+  ItemEventRow,
+  ListItemRow,
+  ListRow,
+  ProductRow,
+  ProfileRow,
+  PurchaseRow,
+} from "@/lib/types";
 
 export const nowIso = () => new Date().toISOString();
 export const newId = () => crypto.randomUUID();
 
 export type Actor = { userId: string; householdId: string };
+
+// History: what happened to an item, who did it and when. Queued like any other change,
+// so it's recorded even with no signal.
+async function logEvent(actor: Actor, item: ListItemRow, kind: ItemEventKind, at: string) {
+  const event: ItemEventRow = {
+    id: newId(),
+    household_id: actor.householdId,
+    list_id: item.list_id,
+    list_item_id: item.id,
+    product_id: item.product_id,
+    name: item.name,
+    kind,
+    actor: actor.userId,
+    at,
+    created_at: at,
+    updated_at: at,
+  };
+  await saveLocal("item_events", event);
+}
 
 export function normaliseName(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, " ");
@@ -119,6 +147,7 @@ export async function addItem(
       added_by: actor.userId,
       updated_at: t,
     }));
+    await logEvent(actor, restored ?? existing, "readded", t);
     return { item: restored ?? existing, product, status: "restored" };
   }
 
@@ -144,6 +173,7 @@ export async function addItem(
     deleted_at: null,
   };
   await saveLocal("list_items", item);
+  await logEvent(actor, item, "added", t);
   return { item, product, status: "added" };
 }
 
@@ -163,6 +193,7 @@ export async function setChecked(actor: Actor, item: ListItemRow, checked: boole
   });
   if (checked) await recordPurchase(actor, item, t);
   else await takeBackPurchase(item.id, t);
+  await logEvent(actor, item, checked ? "ticked" : "unticked", t);
 }
 
 async function recordPurchase(actor: Actor, item: ListItemRow, at: string) {
@@ -245,13 +276,14 @@ export async function updateItem(
   return null;
 }
 
-export async function deleteItem(item: ListItemRow): Promise<void> {
+export async function deleteItem(actor: Actor, item: ListItemRow): Promise<void> {
   const t = nowIso();
   await patchLocal<ListItemRow>("list_items", item.id, { deleted_at: t, updated_at: t });
+  await logEvent(actor, item, "deleted", t);
 }
 
 // Returns the ids it cleared, so the caller can offer Undo.
-export async function clearTicked(listId: string): Promise<string[]> {
+export async function clearTicked(actor: Actor, listId: string): Promise<string[]> {
   const t = nowIso();
   const ticked = await db()
     .list_items.where("list_id")
@@ -264,16 +296,24 @@ export async function clearTicked(listId: string): Promise<string[]> {
     const next = await patchLocal<ListItemRow>("list_items", i.id, (cur) =>
       cur.checked && !cur.deleted_at ? { deleted_at: t, updated_at: t } : null,
     );
-    if (next?.deleted_at === t) cleared.push(i.id);
+    if (next?.deleted_at === t) {
+      cleared.push(i.id);
+      await logEvent(actor, next, "cleared", t);
+    }
   }
   return cleared;
 }
 
 // Undo for a delete or a clear: brings the items back as they were.
-export async function restoreItems(ids: string[]): Promise<void> {
+export async function restoreItems(actor: Actor, ids: string[]): Promise<void> {
   const t = nowIso();
   for (const id of ids) {
-    await patchLocal<ListItemRow>("list_items", id, (cur) => (cur.deleted_at ? { deleted_at: null, updated_at: t } : null));
+    const before = await db().list_items.get(id);
+    if (!before?.deleted_at) continue;
+    const next = await patchLocal<ListItemRow>("list_items", id, (cur) =>
+      cur.deleted_at ? { deleted_at: null, updated_at: t } : null,
+    );
+    if (next) await logEvent(actor, next, "restored", t);
   }
 }
 
@@ -376,7 +416,7 @@ function combineQuantities(items: ListItemRow[]): { quantity: number | null; uni
 }
 
 // Merges duplicates into `keep`: quantities added, notes combined, first link kept.
-export async function mergeItems(keep: ListItemRow, others: ListItemRow[]): Promise<void> {
+export async function mergeItems(actor: Actor, keep: ListItemRow, others: ListItemRow[]): Promise<void> {
   const all = [keep, ...others];
   const { quantity, unit, leftover } = combineQuantities(all);
   const notes = [...new Set([...all.map((i) => i.note?.trim()).filter((n): n is string => Boolean(n)), ...leftover])];
@@ -388,7 +428,10 @@ export async function mergeItems(keep: ListItemRow, others: ListItemRow[]): Prom
     link: all.find((i) => i.link)?.link ?? null,
     updated_at: t,
   });
-  for (const o of others) await patchLocal<ListItemRow>("list_items", o.id, { deleted_at: t, updated_at: t });
+  for (const o of others) {
+    await patchLocal<ListItemRow>("list_items", o.id, { deleted_at: t, updated_at: t });
+    await logEvent(actor, o, "merged", t);
+  }
 }
 
 // Marks a group as "not duplicates" so the flag doesn't come back.

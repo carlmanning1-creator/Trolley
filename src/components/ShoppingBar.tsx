@@ -161,10 +161,10 @@ export function ShoppingBar({
             <button
               type="button"
               onClick={async () => {
-                const ids = await clearTicked(list.id);
+                const ids = await clearTicked(actor, list.id);
                 if (finishing) await finishShopping(finishing);
                 setFinishing(null);
-                if (ids.length) notify(`Cleared ${ids.length} item${ids.length === 1 ? "" : "s"}`, { label: "Undo", run: () => restoreItems(ids) });
+                if (ids.length) notify(`Cleared ${ids.length} item${ids.length === 1 ? "" : "s"}`, { label: "Undo", run: () => restoreItems(actor, ids) });
               }}
               className="min-h-14 rounded-xl bg-brand px-4 text-lg font-semibold text-brand-contrast"
             >

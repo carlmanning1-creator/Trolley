@@ -17,6 +17,7 @@ export function ListsSheet({
   profiles,
   onPick,
   onManage,
+  onHistory,
   onToast,
 }: {
   open: boolean;
@@ -28,6 +29,7 @@ export function ListsSheet({
   profiles: Map<string, ProfileRow>;
   onPick: (id: string) => void;
   onManage: () => void;
+  onHistory: () => void;
   onToast: (message: string) => void;
 }) {
   const data = { list: active, items, aisles, profiles };
@@ -73,6 +75,9 @@ export function ListsSheet({
               </button>
             </div>
           </div>
+          <button type="button" onClick={onHistory} className="min-h-12 w-full rounded-xl border border-border font-medium">
+            🕘 History: who added, ticked or deleted what
+          </button>
           <button type="button" onClick={onManage} className="min-h-12 w-full rounded-xl border border-border font-medium">
             Add, rename or reorder lists
           </button>

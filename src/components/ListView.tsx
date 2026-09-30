@@ -61,8 +61,8 @@ export function ListView({
       onToggle={() => void setChecked(actor, item, !item.checked)}
       onEdit={() => onEdit(item)}
       onDelete={async () => {
-        await deleteItem(item);
-        notify(`Deleted ${item.name}`, { label: "Undo", run: () => restoreItems([item.id]) });
+        await deleteItem(actor, item);
+        notify(`Deleted ${item.name}`, { label: "Undo", run: () => restoreItems(actor, [item.id]) });
       }}
       onDuplicate={onDuplicates ? () => onDuplicates(duplicates.get(item.id) ?? []) : undefined}
     />
@@ -107,9 +107,9 @@ export function ListView({
             <button
               type="button"
               onClick={async () => {
-                const ids = await clearTicked(list.id);
+                const ids = await clearTicked(actor, list.id);
                 if (ids.length) {
-                  notify(`Cleared ${ids.length} item${ids.length === 1 ? "" : "s"}`, { label: "Undo", run: () => restoreItems(ids) });
+                  notify(`Cleared ${ids.length} item${ids.length === 1 ? "" : "s"}`, { label: "Undo", run: () => restoreItems(actor, ids) });
                 }
               }}
               className="min-h-11 rounded-xl px-3 font-medium text-brand-strong hover:bg-surface"

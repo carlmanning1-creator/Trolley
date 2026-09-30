@@ -5,7 +5,9 @@ import { AddBar } from "@/components/AddBar";
 import { useAuth } from "@/components/AuthProvider";
 import { ComparePrices } from "@/components/ComparePrices";
 import { DuplicateSheet } from "@/components/DuplicateSheet";
+import { HistorySheet } from "@/components/HistorySheet";
 import { ItemSheet } from "@/components/ItemSheet";
+import { LastBought } from "@/components/LastBought";
 import { ListView } from "@/components/ListView";
 import { ListsSheet } from "@/components/ListsSheet";
 import { Settings } from "@/components/Settings";
@@ -66,7 +68,7 @@ export function App({ mode = "phone" }: { mode?: "phone" | "kiosk" }) {
   return <Main key={userId} mode={mode} />;
 }
 
-type Overlay = null | "settings" | "lists" | "staples" | "scan" | "receipts" | "running-low";
+type Overlay = null | "settings" | "lists" | "staples" | "scan" | "receipts" | "running-low" | "history";
 
 function Main({ mode }: { mode: "phone" | "kiosk" }) {
   const { session, profile: authProfile, signOut } = useAuth();
@@ -335,6 +337,7 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
       {mySession && <WakeLock />}
 
       <DuplicateSheet
+        actor={actor}
         group={dupIds ? items.filter((i) => dupIds.includes(i.id) && !i.deleted_at && !i.checked) : null}
         products={products}
         aisles={aisles}
@@ -347,9 +350,12 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
         item={liveEditing}
         aisles={aisles}
         onClose={closeEditor}
-        compare={
-          editingProduct?.barcode && liveEditing ? (
-            <ComparePrices barcode={editingProduct.barcode} name={liveEditing.name} />
+        details={
+          editingProduct && liveEditing ? (
+            <>
+              <LastBought productId={editingProduct.id} profiles={profiles} />
+              {editingProduct.barcode && <ComparePrices barcode={editingProduct.barcode} name={liveEditing.name} />}
+            </>
           ) : undefined
         }
         extra={
@@ -369,6 +375,14 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
         listId={activeList.id}
         aisles={aisles}
         onAdded={onAdded}
+      />
+
+      <HistorySheet
+        open={overlay === "history"}
+        onClose={closeOverlay}
+        lists={lists}
+        profiles={profiles}
+        activeListId={activeList.id}
       />
 
       <RunningLowSheet
@@ -402,6 +416,7 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
         profiles={profiles}
         onPick={chooseList}
         onManage={() => setOverlay("settings")}
+        onHistory={() => setOverlay("history")}
         onToast={notify}
       />
 

@@ -25,6 +25,7 @@ const TABLES = [
   "receipts",
   "receipt_lines",
   "purchases",
+  "item_events",
 ] as const;
 
 const admin = createClient(url, secret, { auth: { persistSession: false, autoRefreshToken: false } });
@@ -41,6 +42,7 @@ let manningListId = "";
 let manningItemId = "";
 let manningProductId = "";
 let manningReceiptId = "";
+const manningEventId = randomUUID();
 const manningObject = `${MANNING}/rls-test-${Date.now()}.png`;
 
 async function signedInClient(email: string) {
@@ -112,6 +114,10 @@ beforeAll(async () => {
     .from("receipt_lines")
     .insert({ receipt_id: manningReceiptId, household_id: MANNING, description: "RLS test line" })
     .throwOnError();
+  await admin
+    .from("item_events")
+    .insert({ id: manningEventId, household_id: MANNING, name: "RLS test event", kind: "added", actor: insiderId, at: new Date().toISOString() })
+    .throwOnError();
   // Removed with the test product (purchases go when their product does).
   await admin
     .from("purchases")
@@ -131,6 +137,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await admin.storage.from("product-images").remove([manningObject]);
   await admin.from("receipts").delete().eq("id", manningReceiptId);
+  await admin.from("item_events").delete().eq("id", manningEventId);
   await admin.from("list_items").delete().eq("id", manningItemId);
   await admin.from("products").delete().eq("id", manningProductId);
   await admin.from("shopping_sessions").delete().eq("household_id", MANNING).eq("started_by", insiderId);

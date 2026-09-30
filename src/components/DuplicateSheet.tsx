@@ -3,17 +3,19 @@
 import { useState } from "react";
 import { ProductThumb } from "@/components/ProductThumb";
 import { Sheet } from "@/components/Sheet";
-import { keepSeparate, mergeItems } from "@/lib/mutations";
+import { keepSeparate, mergeItems, type Actor } from "@/lib/mutations";
 import { formatQuantity } from "@/lib/parse";
 import type { AisleRow, ListItemRow, ProductRow, ProfileRow } from "@/lib/types";
 
 export function DuplicateSheet({
+  actor,
   group,
   products,
   aisles,
   profiles,
   onClose,
 }: {
+  actor: Actor;
   group: ListItemRow[] | null;
   products: Map<string, ProductRow>;
   aisles: AisleRow[];
@@ -23,19 +25,21 @@ export function DuplicateSheet({
   return (
     <Sheet open={Boolean(group && group.length > 1)} onClose={onClose} title="Possible duplicates">
       {group && group.length > 1 && (
-        <DuplicateForm key={group.map((g) => g.id).join()} group={group} products={products} aisles={aisles} profiles={profiles} onClose={onClose} />
+        <DuplicateForm key={group.map((g) => g.id).join()} actor={actor} group={group} products={products} aisles={aisles} profiles={profiles} onClose={onClose} />
       )}
     </Sheet>
   );
 }
 
 function DuplicateForm({
+  actor,
   group,
   products,
   aisles,
   profiles,
   onClose,
 }: {
+  actor: Actor;
   group: ListItemRow[];
   products: Map<string, ProductRow>;
   aisles: AisleRow[];
@@ -49,7 +53,7 @@ function DuplicateForm({
   async function merge() {
     setBusy(true);
     const keep = group.find((g) => g.id === keepId)!;
-    await mergeItems(keep, group.filter((g) => g.id !== keepId));
+    await mergeItems(actor, keep, group.filter((g) => g.id !== keepId));
     onClose();
   }
   async function separate() {

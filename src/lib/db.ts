@@ -1,6 +1,7 @@
 import Dexie, { type EntityTable } from "dexie";
 import type {
   AisleRow,
+  ItemEventRow,
   ListItemRow,
   ListRow,
   ProductRow,
@@ -39,6 +40,7 @@ export class TrolleyDB extends Dexie {
   list_items!: EntityTable<ListItemRow, "id">;
   shopping_sessions!: EntityTable<ShoppingSessionRow, "id">;
   purchases!: EntityTable<PurchaseRow, "id">;
+  item_events!: EntityTable<ItemEventRow, "id">;
   outbox!: EntityTable<OutboxEntry, "seq">;
   meta!: EntityTable<MetaEntry, "key">;
   images!: EntityTable<ImageEntry, "path">;
@@ -61,6 +63,7 @@ export class TrolleyDB extends Dexie {
     this.version(2).stores({ uploads: "path" });
     this.version(3).stores({ pending_receipts: "id" });
     this.version(4).stores({ purchases: "id, product_id, list_item_id" });
+    this.version(5).stores({ item_events: "id, at, list_item_id" });
   }
 }
 

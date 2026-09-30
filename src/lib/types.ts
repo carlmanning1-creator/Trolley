@@ -103,6 +103,20 @@ export type PurchaseRow = Stamps & {
   deleted_at: string | null;
 };
 
+// One thing that happened to a list item, for History.
+export type ItemEventKind = "added" | "readded" | "ticked" | "unticked" | "deleted" | "cleared" | "restored" | "merged";
+export type ItemEventRow = Stamps & {
+  id: string;
+  household_id: string;
+  list_id: string | null;
+  list_item_id: string | null;
+  product_id: string | null;
+  name: string;
+  kind: ItemEventKind;
+  actor: string | null;
+  at: string;
+};
+
 // Tables mirrored on the device, in the order the outbox must push them
 // (a list item can only reach the server after its list, aisle and product).
 // Aisles come before lists so that by the time a list shows on a new device, new items can be sorted.
@@ -114,6 +128,7 @@ export const SYNCED_TABLES = [
   "list_items",
   "shopping_sessions",
   "purchases",
+  "item_events",
 ] as const;
 
 export type SyncedTable = (typeof SYNCED_TABLES)[number];
@@ -130,6 +145,16 @@ export type RowFor<T extends SyncedTable> = T extends "profiles"
           ? ListItemRow
           : T extends "shopping_sessions"
             ? ShoppingSessionRow
-            : PurchaseRow;
+            : T extends "purchases"
+              ? PurchaseRow
+              : ItemEventRow;
 
-export type AnyRow = ProfileRow | ListRow | AisleRow | ProductRow | ListItemRow | ShoppingSessionRow | PurchaseRow;
+export type AnyRow =
+  | ProfileRow
+  | ListRow
+  | AisleRow
+  | ProductRow
+  | ListItemRow
+  | ShoppingSessionRow
+  | PurchaseRow
+  | ItemEventRow;
