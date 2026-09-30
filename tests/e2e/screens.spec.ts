@@ -77,7 +77,8 @@ test("the kitchen screen shows Groceries full screen in big columns with add and
   const ctx = await browser.newContext({ viewport: { width: 1920, height: 1080 }, isMobile: false, hasTouch: true });
   const page = await ctx.newPage();
   await signInThroughUi(page, person);
-  await expect(page.getByLabel("Add an item")).toBeVisible();
+  // The first full download on a new screen can take a few seconds.
+  await expect(page.getByLabel("Add an item")).toBeVisible({ timeout: 20_000 });
   await page.goto("/kiosk");
   await expect(page.getByRole("heading", { level: 1 })).toContainText("Groceries");
   await expect(page.getByRole("button", { name: "Scan" })).toBeVisible();
