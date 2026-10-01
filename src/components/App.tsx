@@ -37,6 +37,7 @@ import {
   useSyncStatus,
 } from "@/lib/hooks";
 import { ensureNotificationsRegistered } from "@/lib/push";
+import { NotificationNudge } from "@/components/NotificationNudge";
 import { processPendingReceipts } from "@/lib/receipts";
 import { noticeItemAdded, sendPendingNotices } from "@/lib/shopping";
 import { autoSortProduct, sweepUnsorted } from "@/lib/autosort";
@@ -303,6 +304,7 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
       </header>
 
       <main className={`flex-1 px-4 pt-2 ${kiosk ? "pb-8" : "pb-28"}`}>
+        {!kiosk && !mySession && <NotificationNudge householdId={actor.householdId} userId={actor.userId} />}
         {!kiosk && !mySession && !showNeeded && dueCount > 0 && (
           <button
             type="button"

@@ -118,31 +118,59 @@ export async function enableNotifications(householdId: string, userId: string): 
     (await reg.pushManager.getSubscription()) ??
     (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) }));
   await saveSubscription(householdId, userId, sub);
+  rememberTurnedOff(false);
   return "on";
+}
+
+// Someone who switched notifications off in Settings keeps them off: opening the app doesn't
+// turn them back on, and the reminder to turn them on stays away.
+const OFF_KEY = "trolley-notifications-off";
+export function turnedOffOnPurpose(): boolean {
+  try {
+    return localStorage.getItem(OFF_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+// Lets anything showing the notification state (like the reminder card) catch up.
+export const PUSH_CHANGED = "trolley-push-changed";
+
+function rememberTurnedOff(off: boolean) {
+  window.dispatchEvent(new Event(PUSH_CHANGED));
+  try {
+    if (off) localStorage.setItem(OFF_KEY, "1");
+    else localStorage.removeItem(OFF_KEY);
+  } catch {
+    // not remembered: fine
+  }
 }
 
 // On opening the app: if this phone already allows notifications (say they were switched on in
 // the phone's own settings), make sure it's registered, without asking anything. Also picks up
-// a subscription the phone has quietly renewed.
-let checked = false;
-export async function ensureNotificationsRegistered(householdId: string, userId: string): Promise<void> {
-  if (checked || !pushSupported() || needsHomeScreenInstall() || Notification.permission !== "granted") return;
+// a subscription the phone has quietly renewed. Callers can await it to know it's finished.
+let registering: Promise<void> | null = null;
+export function ensureNotificationsRegistered(householdId: string, userId: string): Promise<void> {
+  if (registering) return registering;
+  if (!pushSupported() || needsHomeScreenInstall() || Notification.permission !== "granted") return Promise.resolve();
   const key = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-  if (!key || !navigator.onLine) return;
-  checked = true;
-  try {
-    const reg = await navigator.serviceWorker.ready;
-    const sub =
-      (await reg.pushManager.getSubscription()) ??
-      (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) }));
-    await saveSubscription(householdId, userId, sub);
-  } catch (err) {
-    checked = false; // try again next time the app opens
-    console.warn("Couldn't register this phone for notifications", err);
-  }
+  if (!key || !navigator.onLine || turnedOffOnPurpose()) return Promise.resolve();
+  registering = (async () => {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub =
+        (await reg.pushManager.getSubscription()) ??
+        (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) }));
+      await saveSubscription(householdId, userId, sub);
+    } catch (err) {
+      registering = null; // try again next time the app opens
+      console.warn("Couldn't register this phone for notifications", err);
+    }
+  })();
+  return registering;
 }
 
 export async function disableNotifications(): Promise<PushState> {
+  rememberTurnedOff(true);
   const reg = await navigator.serviceWorker.getRegistration();
   const sub = await reg?.pushManager.getSubscription();
   if (sub) {
