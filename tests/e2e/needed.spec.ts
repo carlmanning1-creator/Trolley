@@ -133,7 +133,47 @@ test("Tell everyone sends only for a flagged item, and only when asked", async (
   const headers = { Authorization: `Bearer ${v.data.session!.access_token}` };
 
   const sent = await request.post("/api/push/notify", { headers, data: { event: "needed-soon", itemId: flaggedId } });
-  expect(await sent.json()).toEqual({ sent: 1, removed: 0 });
+  expect(await sent.json()).toEqual({ sent: 1, told: ["Grace"], notTold: [] });
   const notFlagged = await request.post("/api/push/notify", { headers, data: { event: "needed-soon", itemId: plainId } });
   expect(await notFlagged.json()).toEqual({ sent: 0 });
+});
+
+test("a phone that already allows notifications registers itself when the app opens", async ({ browser }, info) => {
+  test.skip(info.project.name === "iphone", "iPhones only register once the app is on the home screen");
+  await admin.from("push_subscriptions").delete().eq("profile_id", bec.id);
+  // Test browsers are private windows, which can't subscribe to push, so stand in for the
+  // phone's push service with a fixed subscription.
+  await admin
+    .from("push_subscriptions")
+    .insert({ profile_id: bec.id, household_id: house.id, endpoint: "https://push.invalid/old-registration", keys: {}, device_label: "Android phone" })
+    .throwOnError();
+  const ctx = await browser.newContext({ permissions: ["notifications"] });
+  await ctx.addInitScript(() => {
+    const fake = {
+      endpoint: "https://push.invalid/this-phone",
+      toJSON: () => ({ endpoint: "https://push.invalid/this-phone", keys: { p256dh: "test", auth: "test" } }),
+      unsubscribe: async () => true,
+    };
+    PushManager.prototype.getSubscription = async () => fake as unknown as PushSubscription;
+    PushManager.prototype.subscribe = async () => fake as unknown as PushSubscription;
+  });
+  const page = await ctx.newPage();
+  await signInThroughUi(page, bec);
+  await expect(page.getByLabel("Add an item")).toBeVisible({ timeout: 20_000 });
+  await page.waitForFunction(() => navigator.serviceWorker?.controller != null, null, { timeout: 30_000 });
+  await page.reload(); // now with the service worker in charge, as on a real phone
+  await expect
+    .poll(
+      async () =>
+        (await admin.from("push_subscriptions").select("endpoint").eq("profile_id", bec.id)).data?.map((r) => r.endpoint),
+      { timeout: 30_000 },
+    )
+    .toEqual(["https://push.invalid/this-phone"]);
+  // Opening again doesn't add a second one for the same phone.
+  await page.reload();
+  await page.waitForTimeout(5000);
+  const { data } = await admin.from("push_subscriptions").select("device_id").eq("profile_id", bec.id);
+  expect(data).toHaveLength(1); // the old registration from this phone was replaced, not kept
+  expect(data![0].device_id).toBeTruthy();
+  await ctx.close();
 });

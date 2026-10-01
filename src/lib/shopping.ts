@@ -3,6 +3,8 @@
 import { callApi } from "@/lib/api";
 import { db, setMeta } from "@/lib/db";
 import { newId, nowIso, type Actor } from "@/lib/mutations";
+import { describeTold } from "@/lib/toldMessage";
+import { notify } from "@/lib/notices";
 import { patchLocal, saveLocal } from "@/lib/sync";
 import { SESSION_MAX_MS } from "@/lib/trips";
 import type { ShoppingSessionRow, Store } from "@/lib/types";
@@ -60,7 +62,7 @@ export async function sendPendingNotices(): Promise<void> {
       const waiting = await db().outbox.where("[table+row_id]").equals([table, id]).count();
       if (waiting) continue; // not on the server yet; try again after the next sync
       try {
-        await callApi("/api/push/notify", {
+        const result = await callApi<{ told?: string[]; notTold?: string[] }>("/api/push/notify", {
           method: "POST",
           json:
             kind === "notify-start"
@@ -70,6 +72,7 @@ export async function sendPendingNotices(): Promise<void> {
                 : { event: "item-added", itemId: id },
         });
         await db().meta.delete(m.key);
+        if (kind === "notify-flag") notify(describeTold(result));
       } catch {
         // Try again later, but don't nag about something from hours ago.
         const age = Date.now() - new Date(m.value.split("|")[1]).getTime();

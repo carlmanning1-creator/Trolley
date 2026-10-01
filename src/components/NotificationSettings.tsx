@@ -43,7 +43,7 @@ export function NotificationSettings({ householdId, userId }: { householdId: str
       <label className="flex min-h-11 items-center justify-between gap-3">
         <span>
           <span className="font-medium">Notifications on this device</span>
-          <span className="block text-sm text-muted">When someone starts shopping, and new items while you shop</span>
+          <span className="block text-sm text-muted">When someone starts shopping, new items while you shop, and “Tell everyone” for needed soon</span>
         </span>
         <input
           type="checkbox"

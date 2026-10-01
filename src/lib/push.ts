@@ -59,6 +59,52 @@ function deviceLabel(): string {
   return "Computer";
 }
 
+// One id per installed copy of the app, so re-registering this phone replaces its old
+// subscription instead of adding another one (which would send everything twice).
+const DEVICE_KEY = "trolley-device-id";
+function deviceId(): string {
+  try {
+    let id = localStorage.getItem(DEVICE_KEY);
+    if (!id) {
+      id = crypto.randomUUID();
+      localStorage.setItem(DEVICE_KEY, id);
+    }
+    return id;
+  } catch {
+    return "unknown";
+  }
+}
+
+// Saves this phone's subscription for this person, and removes any older one from the same
+// phone (including ones saved before phones had an id, matched by the kind of device).
+async function saveSubscription(householdId: string, userId: string, sub: PushSubscription): Promise<void> {
+  const json = sub.toJSON();
+  const id = deviceId();
+  const label = deviceLabel();
+  const sb = supabase();
+  const { error } = await sb.from("push_subscriptions").upsert(
+    {
+      profile_id: userId,
+      household_id: householdId,
+      endpoint: sub.endpoint,
+      keys: json.keys ?? {},
+      device_label: label,
+      device_id: id,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "endpoint" },
+  );
+  if (error) throw new Error("Couldn't save notifications for this device. Check your signal and try again.");
+  await sb.from("push_subscriptions").delete().eq("profile_id", userId).eq("device_id", id).neq("endpoint", sub.endpoint);
+  await sb
+    .from("push_subscriptions")
+    .delete()
+    .eq("profile_id", userId)
+    .is("device_id", null)
+    .eq("device_label", label)
+    .neq("endpoint", sub.endpoint);
+}
+
 // Must be called from a tap. Returns the resulting state.
 export async function enableNotifications(householdId: string, userId: string): Promise<PushState> {
   const state = await getPushState();
@@ -71,22 +117,29 @@ export async function enableNotifications(householdId: string, userId: string): 
   const sub =
     (await reg.pushManager.getSubscription()) ??
     (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) }));
-  const json = sub.toJSON();
-  const { error } = await supabase()
-    .from("push_subscriptions")
-    .upsert(
-      {
-        profile_id: userId,
-        household_id: householdId,
-        endpoint: sub.endpoint,
-        keys: json.keys ?? {},
-        device_label: deviceLabel(),
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "endpoint" },
-    );
-  if (error) throw new Error("Couldn't save notifications for this device. Check your signal and try again.");
+  await saveSubscription(householdId, userId, sub);
   return "on";
+}
+
+// On opening the app: if this phone already allows notifications (say they were switched on in
+// the phone's own settings), make sure it's registered, without asking anything. Also picks up
+// a subscription the phone has quietly renewed.
+let checked = false;
+export async function ensureNotificationsRegistered(householdId: string, userId: string): Promise<void> {
+  if (checked || !pushSupported() || needsHomeScreenInstall() || Notification.permission !== "granted") return;
+  const key = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+  if (!key || !navigator.onLine) return;
+  checked = true;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub =
+      (await reg.pushManager.getSubscription()) ??
+      (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) }));
+    await saveSubscription(householdId, userId, sub);
+  } catch (err) {
+    checked = false; // try again next time the app opens
+    console.warn("Couldn't register this phone for notifications", err);
+  }
 }
 
 export async function disableNotifications(): Promise<PushState> {

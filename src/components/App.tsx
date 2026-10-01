@@ -36,6 +36,7 @@ import {
   useStoreAisleOrder,
   useSyncStatus,
 } from "@/lib/hooks";
+import { ensureNotificationsRegistered } from "@/lib/push";
 import { processPendingReceipts } from "@/lib/receipts";
 import { noticeItemAdded, sendPendingNotices } from "@/lib/shopping";
 import { autoSortProduct, sweepUnsorted } from "@/lib/autosort";
@@ -147,6 +148,7 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
   // Sort anything still unsorted once the device has caught up, and again when signal returns.
   useEffect(() => {
     if (!ready) return;
+    void ensureNotificationsRegistered(actor.householdId, actor.userId);
     void sweepUnsorted();
     void flushUploads();
     void processPendingReceipts(actor);

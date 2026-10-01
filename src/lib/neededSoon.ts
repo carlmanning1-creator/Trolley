@@ -9,8 +9,9 @@ export function offerToTellEveryone(item: Pick<ListItemRow, "id" | "name">) {
   notify(`${item.name} is flagged as needed soon`, {
     label: "Tell everyone",
     run: async () => {
+      // The result (who got it) replaces this once it's actually sent.
+      notify(navigator.onLine ? "Sending…" : "It'll send when you have signal.");
       await noticeNeededSoon(item.id);
-      notify("Sent. Everyone else gets a notification.");
     },
   });
 }

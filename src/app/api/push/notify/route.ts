@@ -43,7 +43,7 @@ export async function POST(req: Request) {
         url: "/",
       },
     );
-    return Response.json(result);
+    return Response.json({ sent: result.sent, removed: result.removed });
   }
 
   // needed-soon: sent only when someone taps "Tell everyone" after flagging an item. Goes to
@@ -59,7 +59,7 @@ export async function POST(req: Request) {
     }
     const { data: others } = await db
       .from("profiles")
-      .select("id")
+      .select("id, display_name")
       .eq("household_id", caller.householdId)
       .neq("id", caller.userId);
     const result = await sendToPeople(
@@ -71,7 +71,13 @@ export async function POST(req: Request) {
         url: "/",
       },
     );
-    return Response.json(result);
+    // Say who got it and who didn't, so the sender isn't told "sent" when nobody was.
+    const reached = new Set(result.reached);
+    return Response.json({
+      sent: result.sent,
+      told: (others ?? []).filter((p) => reached.has(p.id)).map((p) => p.display_name as string),
+      notTold: (others ?? []).filter((p) => !reached.has(p.id)).map((p) => p.display_name as string),
+    });
   }
 
   // item-added: tell whoever is shopping for that list, unless they added it themselves.
@@ -98,5 +104,5 @@ export async function POST(req: Request) {
     tag: `item-${item.id}`,
     url: "/",
   });
-  return Response.json(result);
+  return Response.json({ sent: result.sent, removed: result.removed });
 }
