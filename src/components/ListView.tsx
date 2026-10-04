@@ -19,6 +19,7 @@ export function ListView({
   large = false,
   shopping = false,
   swipe = true,
+  tapToTick = false,
   columns = 1,
   onEdit,
   onDuplicates,
@@ -33,11 +34,20 @@ export function ListView({
   large?: boolean;
   shopping?: boolean; // bigger ticks while at the shops
   swipe?: boolean; // swipe to tick or delete
+  tapToTick?: boolean; // a tap anywhere on an item ticks it
   columns?: 1 | 2 | 3;
   onEdit: (item: ListItemRow) => void;
   onDuplicates?: (ids: string[]) => void;
 }) {
   const [showTicked, setShowTicked] = useState(false);
+  // Aisles folded away for now. Everything starts open each time the list is shown.
+  const [folded, setFolded] = useState<Set<string>>(() => new Set());
+  const toggleFolded = (key: string) =>
+    setFolded((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
   const groups = useMemo(() => groupItems(items, aisles, list.use_aisles), [items, aisles, list.use_aisles]);
   const ticked = useMemo(
     () => items.filter((i) => i.checked).sort((a, b) => (b.checked_at ?? "").localeCompare(a.checked_at ?? "")),
@@ -57,6 +67,7 @@ export function ListView({
       large={large}
       shopping={shopping}
       swipe={swipe}
+      tapToTick={tapToTick}
       duplicate={duplicates.has(item.id)}
       onToggle={() => void setChecked(actor, item, !item.checked)}
       onEdit={() => onEdit(item)}
@@ -82,12 +93,23 @@ export function ListView({
         {groups.map((g) => (
           <section key={g.key} aria-label={g.title || list.name} className="mb-5 break-inside-avoid">
             {g.title && (
-              <h3 className={`mb-2 flex items-center gap-2 font-semibold text-muted ${large ? "text-2xl" : "text-sm uppercase tracking-wide"}`}>
-                <span aria-hidden>{g.icon}</span>
-                {g.title}
+              <h3 className={`mb-2 font-semibold text-muted ${large ? "text-2xl" : "text-sm uppercase tracking-wide"}`}>
+                <button
+                  type="button"
+                  aria-expanded={!folded.has(g.key)}
+                  onClick={() => toggleFolded(g.key)}
+                  className="flex min-h-11 w-full items-center gap-2 text-left"
+                >
+                  <span aria-hidden>{g.icon}</span>
+                  <span className="flex-1">
+                    {g.title}
+                    {folded.has(g.key) && <span className="ml-1.5 normal-case tracking-normal">({g.items.length})</span>}
+                  </span>
+                  <span aria-hidden>{folded.has(g.key) ? "▸" : "▾"}</span>
+                </button>
               </h3>
             )}
-            <ul className="flex flex-col gap-1.5">{g.items.map(row)}</ul>
+            {!folded.has(g.key) && <ul className="flex flex-col gap-1.5">{g.items.map(row)}</ul>}
           </section>
         ))}
       </div>

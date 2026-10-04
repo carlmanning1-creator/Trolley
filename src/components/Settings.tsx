@@ -163,6 +163,20 @@ function ProfileEditor({ profile }: { profile: ProfileRow }) {
           </span>
         </span>
       </label>
+      <label className="flex min-h-11 items-center gap-3">
+        <input
+          type="checkbox"
+          checked={profile.tap_to_tick ?? false}
+          onChange={(e) => void updateProfile(profile, { tap_to_tick: e.target.checked })}
+          className="h-5 w-5 accent-[var(--brand)]"
+        />
+        <span>
+          <span className="font-medium">Tap anywhere on an item to tick it</span>
+          <span className="block text-sm text-muted">
+            Off: tap the circle to tick, and the rest of the item to open it. Just for you, on every device you use.
+          </span>
+        </span>
+      </label>
     </div>
   );
 }

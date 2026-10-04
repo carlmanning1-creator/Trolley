@@ -340,6 +340,7 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
                   large={kiosk}
                   shopping={Boolean(mySession)}
                   swipe={profiles.get(actor.userId)?.swipe_actions ?? true}
+                  tapToTick={profiles.get(actor.userId)?.tap_to_tick ?? false}
                   columns={kiosk ? 3 : 2}
                   onEdit={setEditing}
                 />
@@ -353,6 +354,7 @@ function Main({ mode }: { mode: "phone" | "kiosk" }) {
             aisles={storeAisles ?? aisles}
             shopping={Boolean(mySession)}
             swipe={profiles.get(actor.userId)?.swipe_actions ?? true}
+            tapToTick={profiles.get(actor.userId)?.tap_to_tick ?? false}
             products={products}
             profiles={profiles}
             large={kiosk}

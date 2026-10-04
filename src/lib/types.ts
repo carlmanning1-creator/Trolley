@@ -15,6 +15,7 @@ export type ProfileRow = Stamps & {
   colour: string;
   is_admin?: boolean;
   swipe_actions?: boolean; // swipe right to tick, left to delete (on unless turned off)
+  tap_to_tick?: boolean; // a tap anywhere on an item ticks it (off: only the tick circle does)
 };
 
 export type ListRow = Stamps & {

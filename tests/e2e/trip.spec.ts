@@ -118,7 +118,7 @@ test("the list follows the order a store is usually walked, once it has seen two
   await add(page, "Cheese"); // Dairy & Eggs
   await synced(page);
   // Aisle headings, without their icons.
-  const headings = async () => (await page.locator("main h3").allTextContents()).map((h) => h.replace(/^[^A-Za-z]+/, ""));
+  const headings = async () => (await page.locator("main h3").allTextContents()).map((h) => h.replace(/^[^A-Za-z]+|[^A-Za-z]+$/g, ""));
   // The usual order (the household's aisle order) before the trip.
   await expect.poll(headings).toEqual(expect.arrayContaining(["Fruit & Veg", "Dairy & Eggs", "Pantry"]));
   expect((await headings()).indexOf("Fruit & Veg")).toBeLessThan((await headings()).indexOf("Dairy & Eggs"));
@@ -150,7 +150,7 @@ test("deleting an item can be undone", async ({ page }) => {
 
 // The item's centre, scrolled to the middle of the screen (clear of the bottom bar).
 async function centreOf(page: Page, name: string) {
-  const target = item(page, name).getByRole("checkbox");
+  const target = item(page, name).getByTestId("item-main");
   await target.evaluate((el) => el.scrollIntoView({ block: "center" }));
   return (await target.boundingBox())!;
 }
@@ -217,4 +217,53 @@ test("swipes can be turned off in Settings, just for that person", async ({ page
   await synced(page);
   const { data } = await admin.from("profiles").select("swipe_actions").eq("id", person.id).single();
   expect(data?.swipe_actions).toBe(false);
+});
+
+test("a tap on the circle ticks and a tap on the item opens it, unless that person prefers tap anywhere", async ({ page }) => {
+  await signInThroughUi(page, person);
+  await add(page, "Pears");
+  await synced(page);
+  await expect(page.getByRole("heading", { name: /Not sorted yet/ })).toHaveCount(0, { timeout: 20_000 });
+
+  // The usual way: the item opens, the circle ticks.
+  await item(page, "Pears").getByTestId("item-main").click();
+  await expect(page.getByRole("heading", { name: "Edit item" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(item(page, "Pears")).toHaveAttribute("data-checked", "false");
+  await expect(item(page, "Pears").getByRole("button", { name: "Edit Pears" })).toHaveCount(1); // no separate ⋯
+  await item(page, "Pears").getByRole("checkbox").click();
+  await page.getByRole("button", { name: /In the trolley/ }).click();
+  await expect(item(page, "Pears")).toHaveAttribute("data-checked", "true");
+  await item(page, "Pears").getByRole("checkbox").click();
+  await expect(item(page, "Pears")).toHaveAttribute("data-checked", "false");
+
+  // Tap anywhere to tick, for those who'd rather.
+  await page.getByRole("button", { name: "Settings" }).click();
+  const setting = page.getByLabel(/Tap anywhere on an item to tick it/);
+  await expect(setting).not.toBeChecked();
+  await setting.click();
+  await page.keyboard.press("Escape");
+  await item(page, "Pears").getByTestId("item-main").click();
+  await expect(item(page, "Pears")).toHaveAttribute("data-checked", "true");
+  await expect(page.getByRole("heading", { name: "Edit item" })).toHaveCount(0);
+  await item(page, "Pears").getByRole("button", { name: "Edit Pears" }).click(); // the ⋯ button
+  await expect(page.getByRole("heading", { name: "Edit item" })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  await synced(page);
+  const { data } = await admin.from("profiles").select("tap_to_tick").eq("id", person.id).single();
+  expect(data?.tap_to_tick).toBe(true);
+  await admin.from("profiles").update({ tap_to_tick: false }).eq("id", person.id);
+});
+
+test("an aisle folds away with a tap and everything is open again next time", async ({ page }) => {
+  await signInThroughUi(page, person);
+  await add(page, "Bananas");
+  await expect(page.getByRole("region", { name: "Fruit & Veg" })).toContainText("Bananas", { timeout: 20_000 });
+  const heading = page.getByRole("region", { name: "Fruit & Veg" }).getByRole("button", { expanded: true });
+  await heading.click();
+  await expect(item(page, "Bananas")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Fruit & Veg" }).getByRole("button", { expanded: false })).toContainText(/\(\d+\)/);
+  await page.reload();
+  await expect(item(page, "Bananas")).toBeVisible({ timeout: 20_000 });
 });

@@ -240,6 +240,7 @@ export async function flush(): Promise<void> {
                 display_name: p.display_name,
                 colour: p.colour,
                 swipe_actions: p.swipe_actions ?? true,
+                tap_to_tick: p.tap_to_tick ?? false,
                 updated_at: p.updated_at,
               })
               .eq("id", p.id)

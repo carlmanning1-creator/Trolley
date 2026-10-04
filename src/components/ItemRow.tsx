@@ -8,8 +8,9 @@ import type { AisleRow, ListItemRow, ProductRow, ProfileRow } from "@/lib/types"
 const LONG_PRESS_MS = 500;
 const SWIPE_PX = 80;
 
-// One line on the list. Tap to tick; long-press or the ⋯ button to edit. For people who have
-// swipes on (Settings), swipe right also ticks and swipe left deletes (with Undo).
+// One line on the list. Tap the circle to tick and the rest of the line to edit; people who
+// prefer it (Settings) tick with a tap anywhere and edit with the ⋯ button. Long-press always
+// edits. For people who have swipes on, swipe right also ticks and swipe left deletes (with Undo).
 export function ItemRow({
   item,
   product,
@@ -19,6 +20,7 @@ export function ItemRow({
   large,
   shopping,
   swipe = true,
+  tapToTick = false,
   duplicate,
   onToggle,
   onEdit,
@@ -33,6 +35,7 @@ export function ItemRow({
   large?: boolean;
   shopping?: boolean;
   swipe?: boolean; // the person's setting: swipe to tick or delete
+  tapToTick?: boolean; // the person's setting: a tap anywhere ticks
   duplicate?: boolean;
   onToggle: () => void;
   onEdit: () => void;
@@ -99,13 +102,26 @@ export function ItemRow({
       suppressClick.current = false;
       return;
     }
-    onToggle();
+    if (tapToTick) onToggle();
+    else onEdit();
   }
 
   const qty = formatQuantity(item.quantity, item.unit);
   // Once it's in the trolley it's no longer needed, whatever the flag says.
   const needed = Boolean(item.needed_soon) && !item.checked;
   const initial = addedBy?.display_name?.charAt(0).toUpperCase() ?? "?";
+
+  const label = `${item.name}${qty ? `, ${qty}` : ""}${needed ? ", needed soon" : ""}${item.checked ? ", in the trolley" : ""}`;
+  const tick = (
+    <span
+      aria-hidden
+      className={`flex shrink-0 items-center justify-center rounded-full border-2 ${
+        large ? "h-10 w-10 text-xl" : shopping ? "h-9 w-9 text-lg" : "h-7 w-7 text-sm"
+      } ${item.checked ? "border-brand bg-brand text-brand-contrast" : "border-border"}`}
+    >
+      {item.checked ? "✓" : ""}
+    </span>
+  );
 
   return (
     <li
@@ -129,11 +145,24 @@ export function ItemRow({
         className="relative flex items-center gap-2 bg-surface"
         style={{ transform: dx ? `translateX(${dx}px)` : undefined, transition: dx ? "none" : "transform 150ms" }}
       >
+        {!tapToTick && (
+          <button
+            type="button"
+            role="checkbox"
+            aria-checked={item.checked}
+            aria-label={label}
+            onClick={onToggle}
+            className={`flex shrink-0 items-center justify-center pl-2 ${large ? "min-h-20 min-w-16" : "min-h-14 min-w-11"}`}
+          >
+            {tick}
+          </button>
+        )}
         <button
           type="button"
-          role="checkbox"
-          aria-checked={item.checked}
-          aria-label={`${item.name}${qty ? `, ${qty}` : ""}${needed ? ", needed soon" : ""}${item.checked ? ", in the trolley" : ""}`}
+          {...(tapToTick
+            ? { role: "checkbox", "aria-checked": item.checked, "aria-label": label }
+            : { "aria-label": `Edit ${item.name}` })}
+          data-testid="item-main"
           onPointerDown={down}
           onPointerMove={move}
           onPointerUp={up}
@@ -141,18 +170,11 @@ export function ItemRow({
           onPointerLeave={() => press.current && !press.current.fired && up()}
           onContextMenu={(e) => e.preventDefault()}
           onClick={click}
-          className={`flex min-w-0 flex-1 touch-pan-y items-center gap-3 px-2 py-1.5 text-left select-none ${
+          className={`flex min-w-0 flex-1 touch-pan-y items-center gap-3 py-1.5 pr-2 text-left select-none ${tapToTick ? "pl-2" : ""} ${
             large ? "min-h-20" : "min-h-14"
           }`}
         >
-          <span
-            aria-hidden
-            className={`flex shrink-0 items-center justify-center rounded-full border-2 ${
-              large ? "h-10 w-10 text-xl" : shopping ? "h-9 w-9 text-lg" : "h-7 w-7 text-sm"
-            } ${item.checked ? "border-brand bg-brand text-brand-contrast" : "border-border"}`}
-          >
-            {item.checked ? "✓" : ""}
-          </span>
+          {tapToTick && tick}
           <ProductThumb product={product} aisle={aisle} size={large ? 64 : 40} />
           <span className="min-w-0 flex-1">
             <span
@@ -207,14 +229,16 @@ export function ItemRow({
             🔗
           </a>
         )}
-        <button
-          type="button"
-          onClick={onEdit}
-          aria-label={`Edit ${item.name}`}
-          className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full text-2xl text-muted hover:bg-surface-2"
-        >
-          ⋯
-        </button>
+        {tapToTick && (
+          <button
+            type="button"
+            onClick={onEdit}
+            aria-label={`Edit ${item.name}`}
+            className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full text-2xl text-muted hover:bg-surface-2"
+          >
+            ⋯
+          </button>
+        )}
       </div>
     </li>
   );

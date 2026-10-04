@@ -400,7 +400,7 @@ export async function moveAisle(id: string, dir: -1 | 1) {
 
 export async function updateProfile(
   profile: ProfileRow,
-  patch: Partial<Pick<ProfileRow, "display_name" | "colour" | "swipe_actions">>,
+  patch: Partial<Pick<ProfileRow, "display_name" | "colour" | "swipe_actions" | "tap_to_tick">>,
 ) {
   await patchLocal<ProfileRow>("profiles", profile.id, { ...patch, updated_at: nowIso() });
 }
