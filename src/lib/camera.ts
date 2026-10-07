@@ -24,11 +24,37 @@ export type CameraControls = {
 };
 
 // Rear cameras by likely usefulness: the main lens first, ultra-wide and telephoto last.
+// Android names them only by number ("camera2 2, facing back"); its main rear lens is the
+// lowest number, so those go in number order.
 export function rankRearCameras(devices: MediaDeviceInfo[]): MediaDeviceInfo[] {
   const rear = devices.filter((d) => d.kind === "videoinput" && !/front|user|facetime/i.test(d.label));
   const score = (label: string) =>
     /ultra|wide|0\.5/i.test(label) ? 2 : /tele|zoom|macro|depth/i.test(label) ? 1 : 0;
-  return [...rear].sort((a, b) => score(a.label) - score(b.label));
+  const androidNumber = (label: string) => Number(/camera2 (\d+)/.exec(label)?.[1] ?? 0);
+  return [...rear].sort((a, b) => score(a.label) - score(b.label) || androidNumber(a.label) - androidNumber(b.label));
+}
+
+// Whether a lens name is one we can't tell apart from the others by name alone (Android).
+export function unnamedLens(label: string): boolean {
+  return /^camera2 \d+/.test(label);
+}
+
+// The lens someone picked with "Switch lens", remembered on this phone for next time.
+const LENS_KEY = "trolley-scan-lens";
+export function rememberedLens(): string | undefined {
+  try {
+    return localStorage.getItem(LENS_KEY) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+export function rememberLens(deviceId: string | null) {
+  try {
+    if (deviceId) localStorage.setItem(LENS_KEY, deviceId);
+    else localStorage.removeItem(LENS_KEY);
+  } catch {
+    // not remembered: fine
+  }
 }
 
 function capabilities(track: MediaStreamTrack): ExtraCapabilities {

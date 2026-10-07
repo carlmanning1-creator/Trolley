@@ -163,3 +163,50 @@ test("barcoded items offer Compare prices; others don't", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Edit item" })).toBeVisible();
   await expect(page.getByRole("region", { name: "Compare prices" })).toHaveCount(0);
 });
+
+test("on a phone whose lenses are only numbered, the scanner starts on the main one and remembers a switch", async ({ page }, info) => {
+  test.skip(info.project.name === "iphone", "Android names its lenses by number");
+  // Stand in for a Samsung: two rear lenses, and Chrome hands over the ultra-wide (camera2 2)
+  // when asked for "the back camera".
+  await page.addInitScript(() => {
+    const lenses = [
+      { deviceId: "lens-2", label: "camera2 2, facing back" },
+      { deviceId: "lens-0", label: "camera2 0, facing back" },
+      { deviceId: "front", label: "camera2 1, facing front" },
+    ];
+    const opened: string[] = [];
+    (window as unknown as { opened: string[] }).opened = opened;
+    const realGet = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    navigator.mediaDevices.enumerateDevices = async () =>
+      lenses.map((l) => ({ ...l, kind: "videoinput", groupId: "", toJSON: () => ({}) }) as MediaDeviceInfo);
+    navigator.mediaDevices.getUserMedia = async (c) => {
+      const wanted = ((c?.video as MediaTrackConstraints)?.deviceId as { exact?: string } | undefined)?.exact ?? "lens-2";
+      opened.push(wanted);
+      const stream = await realGet({ video: true });
+      const track = stream.getVideoTracks()[0];
+      const settings = track.getSettings.bind(track);
+      track.getSettings = () => ({ ...settings(), deviceId: wanted });
+      return stream;
+    };
+  });
+  await signInThroughUi(page, person);
+  await expect(page.getByLabel("Add an item")).toBeVisible({ timeout: 20_000 });
+  const opened = () => page.evaluate(() => (window as unknown as { opened: string[] }).opened);
+
+  await page.getByRole("button", { name: "Scan" }).click();
+  const switchLens = page.getByRole("button", { name: /Switch lens/ });
+  await expect(switchLens).toHaveText(/1 of 2/);
+  expect((await opened()).at(-1)).toBe("lens-0"); // moved off the ultra-wide by itself
+
+  await switchLens.click();
+  await expect(switchLens).toHaveText(/2 of 2/);
+  expect((await opened()).at(-1)).toBe("lens-2");
+  await page.keyboard.press("Escape");
+
+  // Next time, straight to the lens picked.
+  await page.getByRole("button", { name: "Scan" }).click();
+  await expect(page.getByRole("button", { name: /Switch lens/ })).toHaveText(/2 of 2/);
+  const tries = await opened();
+  expect(tries.at(-1)).toBe("lens-2");
+  await page.keyboard.press("Escape");
+});

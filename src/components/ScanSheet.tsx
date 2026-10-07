@@ -5,7 +5,15 @@ import { ComparePrices } from "@/components/ComparePrices";
 import { ProductThumb } from "@/components/ProductThumb";
 import { Sheet } from "@/components/Sheet";
 import { autoSortProduct } from "@/lib/autosort";
-import { nativeDetector, openCamera, rankRearCameras, type CameraControls } from "@/lib/camera";
+import {
+  nativeDetector,
+  openCamera,
+  rankRearCameras,
+  rememberedLens,
+  rememberLens,
+  unnamedLens,
+  type CameraControls,
+} from "@/lib/camera";
 import { db } from "@/lib/db";
 import { findPicture, offLookupBarcode, type OffProduct } from "@/lib/images";
 import { aisleForName } from "@/lib/keywords";
@@ -91,7 +99,9 @@ function Scanner({ onRead }: { onRead: (code: string) => void }) {
   const [manual, setManual] = useState("");
   const [torch, setTorch] = useState<boolean | null>(null); // null: this camera has no light
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
-  const [cameraId, setCameraId] = useState<string | undefined>(undefined);
+  // Start on the lens picked last time on this phone, if any.
+  const [cameraId, setCameraId] = useState<string | undefined>(rememberedLens);
+  const [lensIndex, setLensIndex] = useState(0);
   const done = useRef(false);
   const onReadRef = useRef(onRead);
   useEffect(() => {
@@ -113,18 +123,33 @@ function Scanner({ onRead }: { onRead: (code: string) => void }) {
 
     (async () => {
       try {
-        const cam = await openCamera(cameraId);
+        let cam: CameraControls;
+        try {
+          cam = await openCamera(cameraId);
+        } catch (err) {
+          // The remembered lens has gone (a new phone, or its camera ids changed): start afresh.
+          if (cameraId && err instanceof Error && /Overconstrained|NotFound|NotReadable/.test(err.name)) {
+            rememberLens(null);
+            setCameraId(undefined);
+            return;
+          }
+          throw err;
+        }
         if (cancelled) return cam.stop();
         camera.current = cam;
         setTorch(cam.canTorch ? false : null);
 
         // Lens names only appear once the camera is allowed. If the phone picked a lens that
-        // can't focus close (ultra-wide), move to the main one straight away.
-        if (!cameraId) {
-          const rear = rankRearCameras(await navigator.mediaDevices.enumerateDevices());
-          setCameras(rear);
-          const current = cam.stream.getVideoTracks()[0].getSettings().deviceId;
-          if (rear.length > 1 && current && rear[0].deviceId && current !== rear[0].deviceId && /ultra|wide|0\.5/i.test(rear.find((d) => d.deviceId === current)?.label ?? "")) {
+        // can't focus close (ultra-wide), or one we can't name (Android numbers them), move to
+        // the main one straight away.
+        const rear = rankRearCameras(await navigator.mediaDevices.enumerateDevices());
+        if (cancelled) return cam.stop();
+        setCameras(rear);
+        const current = cam.stream.getVideoTracks()[0].getSettings().deviceId;
+        setLensIndex(Math.max(0, rear.findIndex((d) => d.deviceId === current)));
+        if (!cameraId && rear.length > 1 && current && rear[0].deviceId && current !== rear[0].deviceId) {
+          const label = rear.find((d) => d.deviceId === current)?.label ?? "";
+          if (/ultra|wide|0\.5/i.test(label) || unnamedLens(label)) {
             cam.stop();
             setCameraId(rear[0].deviceId);
             return;
@@ -193,7 +218,9 @@ function Scanner({ onRead }: { onRead: (code: string) => void }) {
     const current = camera.current?.stream.getVideoTracks()[0].getSettings().deviceId;
     const i = cameras.findIndex((c) => c.deviceId === current);
     setTorch(null);
-    setCameraId(cameras[(i + 1) % cameras.length].deviceId);
+    const next = cameras[(i + 1) % cameras.length].deviceId;
+    rememberLens(next);
+    setCameraId(next);
   }
 
   function submitManual(e: FormEvent) {
@@ -237,7 +264,7 @@ function Scanner({ onRead }: { onRead: (code: string) => void }) {
             )}
             {cameras.length > 1 && (
               <button type="button" onClick={nextCamera} className="min-h-11 rounded-full bg-black/60 px-4 font-medium text-white">
-                🔄 Switch lens
+                🔄 Switch lens ({lensIndex + 1} of {cameras.length})
               </button>
             )}
           </div>
@@ -249,7 +276,7 @@ function Scanner({ onRead }: { onRead: (code: string) => void }) {
         </p>
       ) : (
         <p className="text-center text-muted">
-          Hold the barcode about a hand&apos;s width away, inside the box. Tap the picture to focus.
+          Hold the barcode about a hand&apos;s width away, inside the box. Tap the picture to focus. Still blurry? Try Switch lens: your phone remembers the one you pick.
         </p>
       )}
       <form onSubmit={submitManual} className="flex gap-2">
